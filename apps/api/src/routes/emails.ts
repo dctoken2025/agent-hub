@@ -976,4 +976,53 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
       });
     }
   });
+
+  // Responder a um email
+  app.post<{
+    Body: {
+      emailId: string;
+      to: string;
+      subject: string;
+      body: string;
+    };
+  }>('/reply', async (request, reply) => {
+    try {
+      const { emailId, to, subject, body } = request.body;
+
+      if (!to || !subject || !body) {
+        return reply.status(400).send({
+          error: 'Campos obrigatórios: to, subject, body',
+        });
+      }
+
+      console.log(`[EmailRoutes] 📤 Enviando resposta para: ${to}`);
+      console.log(`[EmailRoutes] 📝 Assunto: ${subject}`);
+
+      // Importa o GmailClient dinamicamente
+      const { GmailClient } = await import('@agent-hub/email-agent');
+      const gmailClient = new GmailClient();
+      await gmailClient.initialize();
+
+      // Envia o email
+      await gmailClient.sendEmail({
+        to,
+        subject,
+        body,
+        threadId: emailId, // Mantém na mesma thread
+      });
+
+      console.log(`[EmailRoutes] ✅ Email enviado com sucesso!`);
+
+      return {
+        success: true,
+        message: 'Email enviado com sucesso',
+      };
+
+    } catch (error) {
+      console.error('[EmailRoutes] ❌ Erro ao enviar email:', error);
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Erro ao enviar email',
+      });
+    }
+  });
 };

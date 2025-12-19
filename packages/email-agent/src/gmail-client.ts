@@ -374,6 +374,58 @@ export class GmailClient {
     return Buffer.from(base64, 'base64');
   }
 
+  /**
+   * Envia um email.
+   */
+  async sendEmail(options: {
+    to: string;
+    subject: string;
+    body: string;
+    threadId?: string;
+  }): Promise<string> {
+    if (!this.gmail) {
+      throw new Error('Gmail client não inicializado');
+    }
+
+    const { to, subject, body, threadId } = options;
+
+    // Monta o email no formato RFC 2822
+    const emailLines = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      'Content-Type: text/plain; charset=utf-8',
+      'MIME-Version: 1.0',
+      '',
+      body,
+    ];
+
+    const email = emailLines.join('\r\n');
+    
+    // Converte para base64 URL-safe
+    const encodedEmail = Buffer.from(email)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    const requestBody: { raw: string; threadId?: string } = {
+      raw: encodedEmail,
+    };
+
+    // Se tiver threadId, mantém na mesma conversa
+    if (threadId) {
+      requestBody.threadId = threadId;
+    }
+
+    const response = await this.gmail.users.messages.send({
+      userId: 'me',
+      requestBody,
+    });
+
+    console.log(`[GmailClient] Email enviado - ID: ${response.data.id}`);
+    return response.data.id || '';
+  }
+
   private stripHtml(html: string): string {
     return html
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')

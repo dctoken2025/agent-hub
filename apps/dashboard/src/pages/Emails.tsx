@@ -10,7 +10,11 @@ import {
   Tag,
   RefreshCw,
   CheckCheck,
-  ArchiveX
+  ArchiveX,
+  Reply,
+  Send,
+  X,
+  Loader2
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn, apiRequest } from '@/lib/utils';
@@ -56,9 +60,24 @@ const priorityConfig = {
 
 type ReadFilter = 'unread' | 'read' | 'all';
 
+// Formata data e hora
+function formatDateTime(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function Emails() {
   const [selectedPriority, setSelectedPriority] = useState<string | null>(null);
   const [readFilter, setReadFilter] = useState<ReadFilter>('unread');
+  const [replyingTo, setReplyingTo] = useState<ClassifiedEmail | null>(null);
+  const [replyMessage, setReplyMessage] = useState('');
+  const [bulkActionProgress, setBulkActionProgress] = useState<{ action: string; count: number; total: number } | null>(null);
   const queryClient = useQueryClient();
   const dialog = useDialog();
   
@@ -69,32 +88,65 @@ export function Emails() {
   });
 
   const markReadMutation = useMutation({
-    mutationFn: (priority: string) => 
-      apiRequest('/emails/mark-read', { 
+    mutationFn: async (priority: string) => {
+      const total = emails.filter(e => e.classification.priority === priority && !e.isRead).length;
+      setBulkActionProgress({ action: 'Marcando como lido', count: 0, total });
+      
+      const result = await apiRequest('/emails/mark-read', { 
         method: 'POST',
         body: JSON.stringify({ priority }),
-      }),
+      });
+      
+      return result;
+    },
     onSuccess: (data: any) => {
+      setBulkActionProgress(null);
       dialog.success(`${data.count || 0} emails marcados como lidos!`);
       queryClient.invalidateQueries({ queryKey: ['emails'] });
     },
     onError: (error: any) => {
+      setBulkActionProgress(null);
       dialog.error(error.message);
     },
   });
 
   const archiveMutation = useMutation({
-    mutationFn: (priority: string) => 
-      apiRequest('/emails/archive', { 
+    mutationFn: async (priority: string) => {
+      const total = emails.filter(e => e.classification.priority === priority && !e.isRead).length;
+      setBulkActionProgress({ action: 'Arquivando', count: 0, total });
+      
+      const result = await apiRequest('/emails/archive', { 
         method: 'POST',
         body: JSON.stringify({ priority }),
-      }),
+      });
+      
+      return result;
+    },
     onSuccess: (data: any) => {
+      setBulkActionProgress(null);
       dialog.success(`${data.count || 0} emails arquivados!`);
       queryClient.invalidateQueries({ queryKey: ['emails'] });
     },
     onError: (error: any) => {
+      setBulkActionProgress(null);
       dialog.error(error.message);
+    },
+  });
+
+  const replyMutation = useMutation({
+    mutationFn: async ({ emailId, to, subject, body }: { emailId: string; to: string; subject: string; body: string }) => {
+      return apiRequest('/emails/reply', { 
+        method: 'POST',
+        body: JSON.stringify({ emailId, to, subject, body }),
+      });
+    },
+    onSuccess: () => {
+      dialog.success('Email enviado com sucesso!');
+      setReplyingTo(null);
+      setReplyMessage('');
+    },
+    onError: (error: any) => {
+      dialog.error(error.message || 'Erro ao enviar email');
     },
   });
 
@@ -138,6 +190,22 @@ export function Emails() {
     refetch();
   };
 
+  const handleReply = (email: ClassifiedEmail) => {
+    setReplyingTo(email);
+    setReplyMessage('');
+  };
+
+  const handleSendReply = () => {
+    if (!replyingTo || !replyMessage.trim()) return;
+    
+    replyMutation.mutate({
+      emailId: replyingTo.id,
+      to: replyingTo.from.email,
+      subject: replyingTo.subject.startsWith('Re:') ? replyingTo.subject : `Re: ${replyingTo.subject}`,
+      body: replyMessage,
+    });
+  };
+
   // Verifica se a prioridade selecionada permite ações em massa
   // Só mostra ações em massa se houver emails não lidos da prioridade selecionada
   const unreadInPriority = selectedPriority 
@@ -177,6 +245,109 @@ export function Emails() {
         </div>
       </div>
 
+      {/* Bulk Action Progress */}
+      {bulkActionProgress && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card p-6 rounded-xl shadow-xl max-w-md w-full mx-4">
+            <div className="flex items-center gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <div className="flex-1">
+                <p className="font-medium">{bulkActionProgress.action}...</p>
+                <p className="text-sm text-muted-foreground">
+                  Processando {bulkActionProgress.total} emails
+                </p>
+                <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-primary transition-all duration-300 animate-pulse"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Isso pode levar alguns segundos...
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reply Modal */}
+      {replyingTo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card p-6 rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Reply className="h-5 w-5" />
+                Responder Email
+              </h3>
+              <button
+                onClick={() => setReplyingTo(null)}
+                className="p-2 hover:bg-secondary rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 bg-secondary/50 rounded-lg">
+                <p className="text-sm text-muted-foreground">Para:</p>
+                <p className="font-medium">{replyingTo.from.name || replyingTo.from.email}</p>
+                <p className="text-sm text-muted-foreground">&lt;{replyingTo.from.email}&gt;</p>
+              </div>
+
+              <div className="p-3 bg-secondary/50 rounded-lg">
+                <p className="text-sm text-muted-foreground">Assunto:</p>
+                <p className="font-medium">
+                  {replyingTo.subject.startsWith('Re:') ? replyingTo.subject : `Re: ${replyingTo.subject}`}
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Sua resposta:</label>
+                <textarea
+                  value={replyMessage}
+                  onChange={(e) => setReplyMessage(e.target.value)}
+                  className="w-full mt-1 p-3 border rounded-lg bg-background min-h-[200px] resize-y"
+                  placeholder="Digite sua resposta..."
+                  autoFocus
+                />
+              </div>
+
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm text-muted-foreground mb-2">Email original:</p>
+                <p className="text-sm italic">{replyingTo.snippet}</p>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setReplyingTo(null)}
+                  className="px-4 py-2 border rounded-lg hover:bg-secondary transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSendReply}
+                  disabled={!replyMessage.trim() || replyMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  {replyMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4" />
+                      Enviar Resposta
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bulk Actions */}
       {canBulkAction && (
         <div className="flex items-center gap-2 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
@@ -188,16 +359,34 @@ export function Emails() {
             disabled={markReadMutation.isPending}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
           >
-            <CheckCheck className="h-4 w-4" />
-            {markReadMutation.isPending ? 'Marcando...' : 'Marcar Todos como Lido'}
+            {markReadMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Processando...
+              </>
+            ) : (
+              <>
+                <CheckCheck className="h-4 w-4" />
+                Marcar Todos como Lido
+              </>
+            )}
           </button>
           <button
             onClick={() => archiveMutation.mutate(selectedPriority)}
             disabled={archiveMutation.isPending}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
           >
-            <ArchiveX className="h-4 w-4" />
-            {archiveMutation.isPending ? 'Arquivando...' : 'Arquivar Todos'}
+            {archiveMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Processando...
+              </>
+            ) : (
+              <>
+                <ArchiveX className="h-4 w-4" />
+                Arquivar Todos
+              </>
+            )}
           </button>
         </div>
       )}
@@ -342,7 +531,7 @@ export function Emails() {
                       </span>
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" />
-                        {new Date(email.date).toLocaleDateString('pt-BR')}
+                        {formatDateTime(email.date)}
                       </span>
                     </div>
 
@@ -371,14 +560,22 @@ export function Emails() {
                     </p>
                   </div>
 
-                  {/* Action indicator */}
-                  <div className="text-right">
+                  {/* Actions */}
+                  <div className="flex flex-col items-end gap-2">
                     <span className={cn(
                       "text-xs font-medium",
                       email.classification.requiresAction ? "text-orange-500" : "text-green-500"
                     )}>
                       {email.classification.requiresAction ? "Requer ação" : "Sem ação"}
                     </span>
+                    
+                    <button
+                      onClick={() => handleReply(email)}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                    >
+                      <Reply className="h-3.5 w-3.5" />
+                      Responder
+                    </button>
                   </div>
                 </div>
               </div>

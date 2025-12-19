@@ -81,12 +81,6 @@ function formatBRL(value: number): string {
   }).format(value);
 }
 
-// Parse valor BRL para número
-function parseBRL(value: string): number {
-  const cleaned = value.replace(/[R$\s.]/g, '').replace(',', '.');
-  return parseFloat(cleaned) || 0;
-}
-
 const priorityConfig = {
   urgent: { label: 'Urgente', color: 'bg-red-500', icon: '🔴' },
   attention: { label: 'Atenção', color: 'bg-orange-500', icon: '🟠' },
