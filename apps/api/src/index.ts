@@ -116,6 +116,61 @@ async function initializeEmailAgent() {
     const scheduler = getScheduler();
     scheduler.register(emailAgent);
 
+    // Registra logs do Email Agent quando executado
+    emailAgent.on('completed', async (event: { result: unknown; duration: number }) => {
+      const db = getDb();
+      if (!db) return;
+      
+      try {
+        // O result vem como { success, data: { processedCount, classifications, ... } }
+        const agentResult = event.result as {
+          success?: boolean;
+          data?: {
+            processedCount?: number;
+            classifications?: Record<string, number>;
+            contractsDetected?: number;
+          };
+        } | null;
+        
+        const data = agentResult?.data;
+        
+        await db.insert(agentLogs).values({
+          agentId: 'email-agent',
+          agentName: 'Email Agent',
+          eventType: 'completed',
+          success: true,
+          duration: event.duration,
+          processedCount: data?.processedCount || 0,
+          details: {
+            classifications: data?.classifications,
+            contractsDetected: data?.contractsDetected,
+          },
+        });
+        console.log(`[EmailAgent] Log de execução registrado: ${data?.processedCount || 0} emails`);
+      } catch (error) {
+        console.error('[EmailAgent] Erro ao registrar log:', error);
+      }
+    });
+
+    // Registra falhas do Email Agent
+    emailAgent.on('failed', async (event: { error: unknown }) => {
+      const db = getDb();
+      if (!db) return;
+      
+      try {
+        await db.insert(agentLogs).values({
+          agentId: 'email-agent',
+          agentName: 'Email Agent',
+          eventType: 'failed',
+          success: false,
+          errorMessage: event.error instanceof Error ? event.error.message : String(event.error),
+        });
+        console.log('[EmailAgent] Log de falha registrado');
+      } catch (error) {
+        console.error('[EmailAgent] Erro ao registrar log de falha:', error);
+      }
+    });
+
     console.log('📧 Email Agent registrado');
     console.log(`   📬 Email: ${config.user.email}`);
     console.log(`   ⏱️  Intervalo: ${config.emailAgent?.intervalMinutes || config.settings.emailCheckInterval} minutos`);

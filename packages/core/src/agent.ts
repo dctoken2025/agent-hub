@@ -194,6 +194,8 @@ export abstract class Agent<TInput = unknown, TOutput = unknown> extends EventEm
       timestamp: new Date(),
       details,
     };
+    // Emite tanto o evento genérico quanto o evento específico
     this.emit('agentEvent', event);
+    this.emit(type, details);
   }
 }
