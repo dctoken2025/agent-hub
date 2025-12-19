@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
-  Settings, Mail, Scale, Plus, Trash2, Save, 
+  Mail, Scale, Plus, Trash2, Save, 
   Clock, Zap, AlertTriangle, CheckCircle, Edit2, X,
   ChevronDown, ChevronUp, ToggleLeft, ToggleRight, Coins
 } from 'lucide-react';
@@ -71,6 +71,22 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+// Formata número para BRL
+function formatBRL(value: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+// Parse valor BRL para número
+function parseBRL(value: string): number {
+  const cleaned = value.replace(/[R$\s.]/g, '').replace(',', '.');
+  return parseFloat(cleaned) || 0;
+}
+
 const priorityConfig = {
   urgent: { label: 'Urgente', color: 'bg-red-500', icon: '🔴' },
   attention: { label: 'Atenção', color: 'bg-orange-500', icon: '🟠' },
@@ -101,10 +117,29 @@ export default function AgentConfig() {
   const [editingRule, setEditingRule] = useState<ClassificationRule | null>(null);
   const [showNewRule, setShowNewRule] = useState(false);
 
+  // Estados locais para edição
+  const [emailForm, setEmailForm] = useState<EmailAgentSettings | null>(null);
+  const [legalForm, setLegalForm] = useState<LegalAgentSettings | null>(null);
+  const [stablecoinForm, setStablecoinForm] = useState<StablecoinAgentSettings | null>(null);
+  
+  // Track se houve mudanças
+  const [emailChanged, setEmailChanged] = useState(false);
+  const [legalChanged, setLegalChanged] = useState(false);
+  const [stablecoinChanged, setStablecoinChanged] = useState(false);
+
   const { data, isLoading } = useQuery({
     queryKey: ['agentConfig'],
     queryFn: () => apiRequest<AgentConfigResponse>('/config/agents'),
   });
+
+  // Inicializa os formulários quando os dados carregam
+  useEffect(() => {
+    if (data) {
+      if (!emailForm) setEmailForm(data.emailAgent);
+      if (!legalForm) setLegalForm(data.legalAgent);
+      if (!stablecoinForm) setStablecoinForm(data.stablecoinAgent);
+    }
+  }, [data, emailForm, legalForm, stablecoinForm]);
 
   const updateEmailAgent = useMutation({
     mutationFn: (settings: Partial<EmailAgentSettings>) =>
@@ -114,6 +149,7 @@ export default function AgentConfig() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
+      setEmailChanged(false);
       dialog.success('Configurações do Email Agent salvas!');
     },
     onError: (error: Error) => dialog.error(error.message),
@@ -127,6 +163,7 @@ export default function AgentConfig() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
+      setLegalChanged(false);
       dialog.success('Configurações do Legal Agent salvas!');
     },
     onError: (error: Error) => dialog.error(error.message),
@@ -140,6 +177,7 @@ export default function AgentConfig() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
+      setStablecoinChanged(false);
       dialog.success('Configurações do Stablecoin Agent salvas!');
     },
     onError: (error: Error) => dialog.error(error.message),
@@ -183,7 +221,7 @@ export default function AgentConfig() {
     onError: (error: Error) => dialog.error(error.message),
   });
 
-  if (isLoading) {
+  if (isLoading || !emailForm || !legalForm || !stablecoinForm) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -191,15 +229,12 @@ export default function AgentConfig() {
     );
   }
 
-  const emailConfig = data?.emailAgent;
-  const legalConfig = data?.legalAgent;
-
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Settings className="h-6 w-6 text-primary" />
+          <Zap className="h-6 w-6 text-primary" />
           Configuração de Agentes
         </h2>
         <p className="text-muted-foreground">
@@ -220,19 +255,24 @@ export default function AgentConfig() {
             <div className="text-left">
               <h3 className="font-semibold">Email Agent</h3>
               <p className="text-sm text-muted-foreground">
-                {emailConfig?.customRules?.length || 0} regras personalizadas
+                {data?.emailAgent?.customRules?.length || 0} regras personalizadas
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className={`px-2 py-1 rounded text-xs font-medium ${emailConfig?.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-              {emailConfig?.enabled ? 'Ativo' : 'Inativo'}
+            {emailChanged && (
+              <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                Alterações pendentes
+              </span>
+            )}
+            <span className={`px-2 py-1 rounded text-xs font-medium ${emailForm.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+              {emailForm.enabled ? 'Ativo' : 'Inativo'}
             </span>
             {expandedSection === 'email' ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
           </div>
         </button>
 
-        {expandedSection === 'email' && emailConfig && (
+        {expandedSection === 'email' && (
           <div className="p-4 border-t space-y-6">
             {/* Configurações Gerais */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -242,8 +282,11 @@ export default function AgentConfig() {
                 </label>
                 <input
                   type="number"
-                  value={emailConfig.intervalMinutes}
-                  onChange={(e) => updateEmailAgent.mutate({ intervalMinutes: parseInt(e.target.value) || 10 })}
+                  value={emailForm.intervalMinutes}
+                  onChange={(e) => {
+                    setEmailForm({ ...emailForm, intervalMinutes: parseInt(e.target.value) || 10 });
+                    setEmailChanged(true);
+                  }}
                   className="w-full px-3 py-2 border rounded-lg bg-background"
                   min={1}
                   max={60}
@@ -253,8 +296,11 @@ export default function AgentConfig() {
                 <label className="text-sm font-medium">Emails por execução</label>
                 <input
                   type="number"
-                  value={emailConfig.maxEmailsPerRun}
-                  onChange={(e) => updateEmailAgent.mutate({ maxEmailsPerRun: parseInt(e.target.value) || 50 })}
+                  value={emailForm.maxEmailsPerRun}
+                  onChange={(e) => {
+                    setEmailForm({ ...emailForm, maxEmailsPerRun: parseInt(e.target.value) || 50 });
+                    setEmailChanged(true);
+                  }}
                   className="w-full px-3 py-2 border rounded-lg bg-background"
                   min={10}
                   max={200}
@@ -263,31 +309,53 @@ export default function AgentConfig() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Processar contratos</label>
                 <button
-                  onClick={() => updateEmailAgent.mutate({ processContracts: !emailConfig.processContracts })}
+                  onClick={() => {
+                    setEmailForm({ ...emailForm, processContracts: !emailForm.processContracts });
+                    setEmailChanged(true);
+                  }}
                   className={`w-full px-3 py-2 border rounded-lg flex items-center justify-center gap-2 transition-colors ${
-                    emailConfig.processContracts ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
+                    emailForm.processContracts ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
                   }`}
                 >
-                  {emailConfig.processContracts ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
-                  {emailConfig.processContracts ? 'Sim' : 'Não'}
+                  {emailForm.processContracts ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                  {emailForm.processContracts ? 'Sim' : 'Não'}
                 </button>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Apenas não lidos</label>
                 <button
-                  onClick={() => updateEmailAgent.mutate({ unreadOnly: !emailConfig.unreadOnly })}
+                  onClick={() => {
+                    setEmailForm({ ...emailForm, unreadOnly: !emailForm.unreadOnly });
+                    setEmailChanged(true);
+                  }}
                   className={`w-full px-3 py-2 border rounded-lg flex items-center justify-center gap-2 transition-colors ${
-                    emailConfig.unreadOnly ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
+                    emailForm.unreadOnly ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
                   }`}
                 >
-                  {emailConfig.unreadOnly ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
-                  {emailConfig.unreadOnly ? 'Sim' : 'Não'}
+                  {emailForm.unreadOnly ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                  {emailForm.unreadOnly ? 'Sim' : 'Não'}
                 </button>
               </div>
             </div>
 
+            {/* Botão Salvar Email Agent */}
+            <div className="flex justify-end">
+              <button
+                onClick={() => updateEmailAgent.mutate(emailForm)}
+                disabled={!emailChanged || updateEmailAgent.isPending}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  emailChanged 
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90' 
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <Save className="h-4 w-4" />
+                {updateEmailAgent.isPending ? 'Salvando...' : 'Salvar Configurações'}
+              </button>
+            </div>
+
             {/* Regras de Classificação */}
-            <div>
+            <div className="border-t pt-4">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-medium flex items-center gap-2">
                   <Zap className="h-4 w-4" />
@@ -313,7 +381,7 @@ export default function AgentConfig() {
 
               {/* Lista de Regras */}
               <div className="space-y-2">
-                {(emailConfig.customRules || []).map((rule) => (
+                {(data?.emailAgent?.customRules || []).map((rule) => (
                   <div key={rule.id}>
                     {editingRule?.id === rule.id ? (
                       <RuleForm
@@ -370,7 +438,7 @@ export default function AgentConfig() {
                   </div>
                 ))}
 
-                {(emailConfig.customRules || []).length === 0 && !showNewRule && (
+                {(data?.emailAgent?.customRules || []).length === 0 && !showNewRule && (
                   <p className="text-center text-muted-foreground py-4">
                     Nenhuma regra personalizada. Clique em "Nova Regra" para adicionar.
                   </p>
@@ -399,34 +467,45 @@ export default function AgentConfig() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className={`px-2 py-1 rounded text-xs font-medium ${legalConfig?.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-              {legalConfig?.enabled ? 'Ativo' : 'Inativo'}
+            {legalChanged && (
+              <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                Alterações pendentes
+              </span>
+            )}
+            <span className={`px-2 py-1 rounded text-xs font-medium ${legalForm.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+              {legalForm.enabled ? 'Ativo' : 'Inativo'}
             </span>
             {expandedSection === 'legal' ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
           </div>
         </button>
 
-        {expandedSection === 'legal' && legalConfig && (
+        {expandedSection === 'legal' && (
           <div className="p-4 border-t space-y-6">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Análise automática</label>
                 <button
-                  onClick={() => updateLegalAgent.mutate({ autoAnalyze: !legalConfig.autoAnalyze })}
+                  onClick={() => {
+                    setLegalForm({ ...legalForm, autoAnalyze: !legalForm.autoAnalyze });
+                    setLegalChanged(true);
+                  }}
                   className={`w-full px-3 py-2 border rounded-lg flex items-center justify-center gap-2 transition-colors ${
-                    legalConfig.autoAnalyze ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
+                    legalForm.autoAnalyze ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
                   }`}
                 >
-                  {legalConfig.autoAnalyze ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
-                  {legalConfig.autoAnalyze ? 'Ativada' : 'Desativada'}
+                  {legalForm.autoAnalyze ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                  {legalForm.autoAnalyze ? 'Ativada' : 'Desativada'}
                 </button>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Tamanho máx. (MB)</label>
                 <input
                   type="number"
-                  value={legalConfig.maxDocumentSizeMB}
-                  onChange={(e) => updateLegalAgent.mutate({ maxDocumentSizeMB: parseInt(e.target.value) || 10 })}
+                  value={legalForm.maxDocumentSizeMB}
+                  onChange={(e) => {
+                    setLegalForm({ ...legalForm, maxDocumentSizeMB: parseInt(e.target.value) || 10 });
+                    setLegalChanged(true);
+                  }}
                   className="w-full px-3 py-2 border rounded-lg bg-background"
                   min={1}
                   max={50}
@@ -440,10 +519,14 @@ export default function AgentConfig() {
                 <span className="text-xs text-muted-foreground">(uma por linha)</span>
               </label>
               <textarea
-                value={(legalConfig.contractKeywords || []).join('\n')}
-                onChange={(e) => updateLegalAgent.mutate({ 
-                  contractKeywords: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) 
-                })}
+                value={(legalForm.contractKeywords || []).join('\n')}
+                onChange={(e) => {
+                  setLegalForm({ 
+                    ...legalForm, 
+                    contractKeywords: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) 
+                  });
+                  setLegalChanged(true);
+                }}
                 className="w-full px-3 py-2 border rounded-lg bg-background h-24 font-mono text-sm"
                 placeholder="contrato&#10;acordo&#10;termo"
               />
@@ -456,13 +539,33 @@ export default function AgentConfig() {
                 <span className="text-xs text-muted-foreground">(uma por linha)</span>
               </label>
               <textarea
-                value={(legalConfig.highRiskKeywords || []).join('\n')}
-                onChange={(e) => updateLegalAgent.mutate({ 
-                  highRiskKeywords: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) 
-                })}
+                value={(legalForm.highRiskKeywords || []).join('\n')}
+                onChange={(e) => {
+                  setLegalForm({ 
+                    ...legalForm, 
+                    highRiskKeywords: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) 
+                  });
+                  setLegalChanged(true);
+                }}
                 className="w-full px-3 py-2 border rounded-lg bg-background h-24 font-mono text-sm"
                 placeholder="penalidade&#10;multa&#10;rescisão"
               />
+            </div>
+
+            {/* Botão Salvar Legal Agent */}
+            <div className="flex justify-end">
+              <button
+                onClick={() => updateLegalAgent.mutate(legalForm)}
+                disabled={!legalChanged || updateLegalAgent.isPending}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  legalChanged 
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90' 
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <Save className="h-4 w-4" />
+                {updateLegalAgent.isPending ? 'Salvando...' : 'Salvar Configurações'}
+              </button>
             </div>
           </div>
         )}
@@ -481,19 +584,24 @@ export default function AgentConfig() {
             <div className="text-left">
               <h3 className="font-semibold">Stablecoin Agent</h3>
               <p className="text-sm text-muted-foreground">
-                Monitoramento de stablecoins na blockchain
+                Monitoramento de stablecoins BRL na blockchain
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className={`px-2 py-1 rounded text-xs font-medium ${data?.stablecoinAgent?.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-              {data?.stablecoinAgent?.enabled ? 'Ativo' : 'Inativo'}
+            {stablecoinChanged && (
+              <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                Alterações pendentes
+              </span>
+            )}
+            <span className={`px-2 py-1 rounded text-xs font-medium ${stablecoinForm.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+              {stablecoinForm.enabled ? 'Ativo' : 'Inativo'}
             </span>
             {expandedSection === 'stablecoin' ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
           </div>
         </button>
 
-        {expandedSection === 'stablecoin' && data?.stablecoinAgent && (
+        {expandedSection === 'stablecoin' && (
           <div className="p-4 border-t space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="space-y-2">
@@ -502,8 +610,11 @@ export default function AgentConfig() {
                 </label>
                 <input
                   type="number"
-                  value={data.stablecoinAgent.checkInterval}
-                  onChange={(e) => updateStablecoinAgent.mutate({ checkInterval: parseInt(e.target.value) || 60 })}
+                  value={stablecoinForm.checkInterval}
+                  onChange={(e) => {
+                    setStablecoinForm({ ...stablecoinForm, checkInterval: parseInt(e.target.value) || 60 });
+                    setStablecoinChanged(true);
+                  }}
                   className="w-full px-3 py-2 border rounded-lg bg-background"
                   min={1}
                   max={1440}
@@ -512,13 +623,16 @@ export default function AgentConfig() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Agente ativo</label>
                 <button
-                  onClick={() => updateStablecoinAgent.mutate({ enabled: !data.stablecoinAgent.enabled })}
+                  onClick={() => {
+                    setStablecoinForm({ ...stablecoinForm, enabled: !stablecoinForm.enabled });
+                    setStablecoinChanged(true);
+                  }}
                   className={`w-full px-3 py-2 border rounded-lg flex items-center justify-center gap-2 transition-colors ${
-                    data.stablecoinAgent.enabled ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
+                    stablecoinForm.enabled ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
                   }`}
                 >
-                  {data.stablecoinAgent.enabled ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
-                  {data.stablecoinAgent.enabled ? 'Sim' : 'Não'}
+                  {stablecoinForm.enabled ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                  {stablecoinForm.enabled ? 'Sim' : 'Não'}
                 </button>
               </div>
             </div>
@@ -526,65 +640,81 @@ export default function AgentConfig() {
             <div>
               <h4 className="font-medium mb-3 flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
-                Limites de Alerta
+                Limites de Alerta (BRL)
               </h4>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Mint grande (USD)</label>
-                  <input
-                    type="number"
-                    value={data.stablecoinAgent.thresholds?.largeMint || 10000000}
-                    onChange={(e) => updateStablecoinAgent.mutate({ 
-                      thresholds: { 
-                        ...data.stablecoinAgent.thresholds, 
-                        largeMint: parseInt(e.target.value) || 10000000 
-                      } 
-                    })}
-                    className="w-full px-3 py-2 border rounded-lg bg-background"
-                    min={1000}
-                  />
+                  <label className="text-sm font-medium">Mint grande</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
+                    <input
+                      type="text"
+                      value={(stablecoinForm.thresholds?.largeMint || 0).toLocaleString('pt-BR')}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value.replace(/\D/g, '')) || 0;
+                        setStablecoinForm({ 
+                          ...stablecoinForm, 
+                          thresholds: { ...stablecoinForm.thresholds, largeMint: value } 
+                        });
+                        setStablecoinChanged(true);
+                      }}
+                      className="w-full pl-10 pr-3 py-2 border rounded-lg bg-background"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{formatBRL(stablecoinForm.thresholds?.largeMint || 0)}</p>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Burn grande (USD)</label>
-                  <input
-                    type="number"
-                    value={data.stablecoinAgent.thresholds?.largeBurn || 10000000}
-                    onChange={(e) => updateStablecoinAgent.mutate({ 
-                      thresholds: { 
-                        ...data.stablecoinAgent.thresholds, 
-                        largeBurn: parseInt(e.target.value) || 10000000 
-                      } 
-                    })}
-                    className="w-full px-3 py-2 border rounded-lg bg-background"
-                    min={1000}
-                  />
+                  <label className="text-sm font-medium">Burn grande</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
+                    <input
+                      type="text"
+                      value={(stablecoinForm.thresholds?.largeBurn || 0).toLocaleString('pt-BR')}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value.replace(/\D/g, '')) || 0;
+                        setStablecoinForm({ 
+                          ...stablecoinForm, 
+                          thresholds: { ...stablecoinForm.thresholds, largeBurn: value } 
+                        });
+                        setStablecoinChanged(true);
+                      }}
+                      className="w-full pl-10 pr-3 py-2 border rounded-lg bg-background"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{formatBRL(stablecoinForm.thresholds?.largeBurn || 0)}</p>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Transfer grande (USD)</label>
-                  <input
-                    type="number"
-                    value={data.stablecoinAgent.thresholds?.largeTransfer || 50000000}
-                    onChange={(e) => updateStablecoinAgent.mutate({ 
-                      thresholds: { 
-                        ...data.stablecoinAgent.thresholds, 
-                        largeTransfer: parseInt(e.target.value) || 50000000 
-                      } 
-                    })}
-                    className="w-full px-3 py-2 border rounded-lg bg-background"
-                    min={1000}
-                  />
+                  <label className="text-sm font-medium">Transfer grande</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
+                    <input
+                      type="text"
+                      value={(stablecoinForm.thresholds?.largeTransfer || 0).toLocaleString('pt-BR')}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value.replace(/\D/g, '')) || 0;
+                        setStablecoinForm({ 
+                          ...stablecoinForm, 
+                          thresholds: { ...stablecoinForm.thresholds, largeTransfer: value } 
+                        });
+                        setStablecoinChanged(true);
+                      }}
+                      className="w-full pl-10 pr-3 py-2 border rounded-lg bg-background"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{formatBRL(stablecoinForm.thresholds?.largeTransfer || 0)}</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Mudança supply (%)</label>
                   <input
                     type="number"
-                    value={data.stablecoinAgent.thresholds?.supplyChangePercent || 1}
-                    onChange={(e) => updateStablecoinAgent.mutate({ 
-                      thresholds: { 
-                        ...data.stablecoinAgent.thresholds, 
-                        supplyChangePercent: parseFloat(e.target.value) || 1 
-                      } 
-                    })}
+                    value={stablecoinForm.thresholds?.supplyChangePercent || 1}
+                    onChange={(e) => {
+                      setStablecoinForm({ 
+                        ...stablecoinForm, 
+                        thresholds: { ...stablecoinForm.thresholds, supplyChangePercent: parseFloat(e.target.value) || 1 } 
+                      });
+                      setStablecoinChanged(true);
+                    }}
                     className="w-full px-3 py-2 border rounded-lg bg-background"
                     min={0.1}
                     step={0.1}
@@ -594,18 +724,35 @@ export default function AgentConfig() {
                   <label className="text-sm font-medium">Frequência/hora</label>
                   <input
                     type="number"
-                    value={data.stablecoinAgent.thresholds?.frequencyPerHour || 100}
-                    onChange={(e) => updateStablecoinAgent.mutate({ 
-                      thresholds: { 
-                        ...data.stablecoinAgent.thresholds, 
-                        frequencyPerHour: parseInt(e.target.value) || 100 
-                      } 
-                    })}
+                    value={stablecoinForm.thresholds?.frequencyPerHour || 100}
+                    onChange={(e) => {
+                      setStablecoinForm({ 
+                        ...stablecoinForm, 
+                        thresholds: { ...stablecoinForm.thresholds, frequencyPerHour: parseInt(e.target.value) || 100 } 
+                      });
+                      setStablecoinChanged(true);
+                    }}
                     className="w-full px-3 py-2 border rounded-lg bg-background"
                     min={1}
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Botão Salvar Stablecoin Agent */}
+            <div className="flex justify-end">
+              <button
+                onClick={() => updateStablecoinAgent.mutate(stablecoinForm)}
+                disabled={!stablecoinChanged || updateStablecoinAgent.isPending}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  stablecoinChanged 
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90' 
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <Save className="h-4 w-4" />
+                {updateStablecoinAgent.isPending ? 'Salvando...' : 'Salvar Configurações'}
+              </button>
             </div>
           </div>
         )}
@@ -755,4 +902,3 @@ function RuleForm({
     </div>
   );
 }
-
