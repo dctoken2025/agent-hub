@@ -5,11 +5,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// URL base da API - em produção usa variável de ambiente
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 export async function apiRequest<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
-  const url = `/api${endpoint}`;
+  const url = `${API_BASE}/api${endpoint}`;
   const method = options?.method || 'GET';
   
   // Se for POST/PUT/PATCH sem body, adiciona body vazio

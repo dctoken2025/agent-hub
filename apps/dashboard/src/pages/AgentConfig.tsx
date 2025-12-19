@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useDialog } from '../components/Dialog';
 
-const API_BASE = 'http://localhost:3001/api';
+import { API_URL as API_BASE } from '../config';
 
 interface ClassificationRule {
   id: string;
