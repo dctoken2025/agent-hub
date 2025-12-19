@@ -560,11 +560,25 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
         interval: updated.intervalMinutes,
         rules: updated.customRules?.length || 0,
       });
+
+      // Reinicia o agente para aplicar as novas configurações
+      let agentRestarted = false;
+      try {
+        const { getScheduler } = await import('@agent-hub/core');
+        const scheduler = getScheduler();
+        
+        agentRestarted = await scheduler.updateAgentInterval('email-agent', updated.intervalMinutes);
+      } catch (restartError) {
+        console.error('[Config] ⚠️ Erro ao reiniciar Email Agent:', restartError);
+      }
       
       return { 
         success: true, 
-        message: 'Configuração do Email Agent salva',
+        message: agentRestarted 
+          ? 'Configuração salva e agente reiniciado' 
+          : 'Configuração salva (reinicie a API para aplicar)',
         config: updated,
+        agentRestarted,
       };
     } catch (error) {
       console.error('[Config] Erro ao salvar Email Agent:', error);
@@ -595,11 +609,25 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
           interval: updated.checkInterval,
           thresholds: updated.thresholds,
         });
+
+        // Reinicia o agente para aplicar as novas configurações
+        let agentRestarted = false;
+        try {
+          const { getScheduler } = await import('@agent-hub/core');
+          const scheduler = getScheduler();
+          
+          agentRestarted = await scheduler.updateAgentInterval('stablecoin-agent', updated.checkInterval);
+        } catch (restartError) {
+          console.error('[Config] ⚠️ Erro ao reiniciar Stablecoin Agent:', restartError);
+        }
         
         return { 
           success: true, 
-          message: 'Configuração do Stablecoin Agent salva',
+          message: agentRestarted 
+            ? 'Configuração salva e agente reiniciado' 
+            : 'Configuração salva (reinície a API para aplicar)',
           config: { enabled: request.body.enabled ?? true, ...updated },
+          agentRestarted,
         };
       } catch (error) {
         console.error('[Config] Erro ao salvar Stablecoin Agent:', error);

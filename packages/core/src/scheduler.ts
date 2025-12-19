@@ -124,6 +124,54 @@ export class AgentScheduler {
   }
 
   /**
+   * Retorna a instância direta de um agente (para atualizações de config).
+   */
+  getAgentInstance(agentId: string): Agent | null {
+    const scheduled = this.agents.get(agentId);
+    return scheduled ? scheduled.agent : null;
+  }
+
+  /**
+   * Atualiza a configuração de intervalo de um agente e o reinicia.
+   */
+  async updateAgentInterval(agentId: string, newIntervalMinutes: number): Promise<boolean> {
+    const scheduled = this.agents.get(agentId);
+    if (!scheduled) {
+      console.warn(`[Scheduler] Agente ${agentId} não encontrado para atualização`);
+      return false;
+    }
+
+    const agent = scheduled.agent;
+    const wasRunning = agent.getInfo().status === 'running';
+
+    try {
+      // Para o agente se estiver rodando
+      if (wasRunning) {
+        console.log(`[Scheduler] 🔄 Parando ${agentId} para atualizar configuração...`);
+        await agent.stop();
+      }
+
+      // Atualiza a configuração de intervalo
+      agent.config.schedule = {
+        type: 'interval',
+        value: newIntervalMinutes,
+      };
+      console.log(`[Scheduler] ⚙️ Intervalo de ${agentId} atualizado para ${newIntervalMinutes} min`);
+
+      // Reinicia se estava rodando
+      if (wasRunning) {
+        await agent.start();
+        console.log(`[Scheduler] ✅ ${agentId} reiniciado com sucesso!`);
+      }
+
+      return true;
+    } catch (error) {
+      console.error(`[Scheduler] ❌ Erro ao atualizar ${agentId}:`, error);
+      return false;
+    }
+  }
+
+  /**
    * Registra um handler para eventos de agentes.
    */
   onEvent(handler: (event: AgentEvent) => void): void {

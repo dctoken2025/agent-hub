@@ -6,7 +6,7 @@ import type { AgentConfig, AgentResult, AgentStatus, AgentEvent } from './types.
  * Cada agente específico deve estender esta classe e implementar o método execute().
  */
 export abstract class Agent<TInput = unknown, TOutput = unknown> extends EventEmitter {
-  protected config: AgentConfig;
+  public config: AgentConfig;
   protected status: AgentStatus = 'idle';
   private intervalId?: NodeJS.Timeout;
   private lastRun?: Date;
