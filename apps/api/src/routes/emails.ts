@@ -424,13 +424,13 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
-      // Busca emails da prioridade que não estão marcados como lidos
-      console.log(`[EmailRoutes] Buscando emails com prioridade "${priority}"...`);
+      // Busca emails da prioridade que NÃO estão marcados como lidos
+      console.log(`[EmailRoutes] Buscando emails não lidos com prioridade "${priority}"...`);
       const emails = await db.select({ emailId: classifiedEmails.emailId })
         .from(classifiedEmails)
-        .where(eq(classifiedEmails.priority, priority));
+        .where(sql`${classifiedEmails.priority} = ${priority} AND ${classifiedEmails.isRead} = false`);
 
-      console.log(`[EmailRoutes] Encontrados ${emails.length} emails`);
+      console.log(`[EmailRoutes] Encontrados ${emails.length} emails não lidos`);
 
       if (emails.length === 0) {
         return { success: true, message: 'Nenhum email para marcar', count: 0 };
@@ -448,16 +448,20 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
 
       for (const email of emails) {
         try {
+          console.log(`[EmailRoutes] Marcando email ${email.emailId} como lido no Gmail...`);
           await gmailClient.markAsRead(email.emailId);
-          markedCount++;
+          console.log(`[EmailRoutes] ✅ Gmail: email ${email.emailId} marcado como lido`);
           
           // Atualiza no banco também
           await db.update(classifiedEmails)
             .set({ isRead: true })
             .where(eq(classifiedEmails.emailId, email.emailId));
+          console.log(`[EmailRoutes] ✅ Banco: email ${email.emailId} atualizado`);
+          
+          markedCount++;
         } catch (error) {
           const errMsg = `${email.emailId}: ${error instanceof Error ? error.message : 'Erro'}`;
-          console.error(`[EmailRoutes] Erro ao marcar email: ${errMsg}`);
+          console.error(`[EmailRoutes] ❌ Erro ao marcar email: ${errMsg}`);
           errors.push(errMsg);
         }
       }
@@ -1013,9 +1017,31 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
 
       console.log(`[EmailRoutes] ✅ Email enviado com sucesso!`);
 
+      // Marca como lido no Gmail
+      try {
+        console.log(`[EmailRoutes] 📖 Marcando email ${emailId} como lido no Gmail...`);
+        await gmailClient.markAsRead(emailId);
+        console.log(`[EmailRoutes] ✅ Gmail: email marcado como lido`);
+      } catch (markError) {
+        console.error(`[EmailRoutes] ⚠️ Não foi possível marcar como lido no Gmail:`, markError);
+      }
+
+      // Marca como lido no banco
+      const db = getDb();
+      if (db) {
+        try {
+          await db.update(classifiedEmails)
+            .set({ isRead: true })
+            .where(eq(classifiedEmails.emailId, emailId));
+          console.log(`[EmailRoutes] ✅ Banco: email marcado como lido`);
+        } catch (dbError) {
+          console.error(`[EmailRoutes] ⚠️ Não foi possível atualizar no banco:`, dbError);
+        }
+      }
+
       return {
         success: true,
-        message: 'Email enviado com sucesso',
+        message: 'Email enviado e marcado como lido',
       };
 
     } catch (error) {
