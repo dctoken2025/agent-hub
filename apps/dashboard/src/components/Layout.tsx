@@ -5,7 +5,10 @@ import {
   Bot, 
   Settings, 
   Menu,
-  X
+  X,
+  Activity,
+  Scale,
+  Coins
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -13,7 +16,10 @@ import { cn } from '@/lib/utils';
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Emails', href: '/emails', icon: Mail },
+  { name: 'Análises Jurídicas', href: '/legal', icon: Scale },
+  { name: 'Stablecoins', href: '/stablecoins', icon: Coins },
   { name: 'Agentes', href: '/agents', icon: Bot },
+  { name: 'Logs', href: '/logs', icon: Activity },
   { name: 'Configurações', href: '/settings', icon: Settings },
 ];
 

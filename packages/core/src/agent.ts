@@ -48,23 +48,37 @@ export abstract class Agent<TInput = unknown, TOutput = unknown> extends EventEm
       return;
     }
 
-    await this.initialize();
-    this.status = 'running';
-    this.emitEvent('started');
+    try {
+      console.log(`[${this.config.name}] Iniciando agente...`);
+      await this.initialize();
+      this.status = 'running';
+      this.emitEvent('started');
 
-    console.log(`[${this.config.name}] Agente iniciado`);
+      console.log(`[${this.config.name}] Agente iniciado com sucesso`);
 
-    // Se tiver schedule do tipo interval, configura execução periódica
-    if (this.config.schedule?.type === 'interval') {
-      const intervalMs = (this.config.schedule.value as number) * 60 * 1000;
-      
-      // Executa imediatamente na primeira vez
-      this.runOnce();
-      
-      // Configura execução periódica
-      this.intervalId = setInterval(() => {
-        this.runOnce();
-      }, intervalMs);
+      // Se tiver schedule do tipo interval, configura execução periódica
+      if (this.config.schedule?.type === 'interval') {
+        const intervalMs = (this.config.schedule.value as number) * 60 * 1000;
+        console.log(`[${this.config.name}] Configurando execução a cada ${this.config.schedule.value} minuto(s)`);
+        
+        // Executa imediatamente na primeira vez
+        console.log(`[${this.config.name}] Executando primeira vez...`);
+        this.runOnce().catch(err => {
+          console.error(`[${this.config.name}] Erro na primeira execução:`, err);
+        });
+        
+        // Configura execução periódica
+        this.intervalId = setInterval(() => {
+          this.runOnce().catch(err => {
+            console.error(`[${this.config.name}] Erro na execução periódica:`, err);
+          });
+        }, intervalMs);
+      }
+    } catch (error) {
+      console.error(`[${this.config.name}] Erro ao iniciar agente:`, error);
+      this.status = 'error';
+      this.emitEvent('failed', { error: error instanceof Error ? error.message : 'Erro desconhecido' });
+      throw error;
     }
   }
 
@@ -127,16 +141,17 @@ export abstract class Agent<TInput = unknown, TOutput = unknown> extends EventEm
       console.log(`[${this.config.name}] Executando... (run #${this.runCount})`);
       
       const result = await this.execute(input);
+      const duration = Date.now() - startTime;
       
       if (result.success) {
-        this.emitEvent('completed', { result });
+        this.emitEvent('completed', { result, duration });
       } else {
-        this.emitEvent('failed', { error: result.error });
+        this.emitEvent('failed', { error: result.error, duration });
       }
 
       return {
         ...result,
-        duration: Date.now() - startTime,
+        duration,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';

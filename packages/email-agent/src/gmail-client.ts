@@ -8,6 +8,7 @@ import type { Email, EmailAddress, EmailAttachment } from './types.js';
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.modify',
+  'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.labels',
 ];
 
@@ -19,14 +20,12 @@ export class GmailClient {
   private oauth2Client: OAuth2Client;
   private gmail: gmail_v1.Gmail | null = null;
   private tokenPath: string;
-  private credentialsPath: string;
 
   constructor(options?: {
-    credentialsPath?: string;
     tokenPath?: string;
   }) {
-    this.credentialsPath = options?.credentialsPath || './credentials.json';
-    this.tokenPath = options?.tokenPath || './token.json';
+    // Usa caminho absoluto baseado no cwd para garantir consistência
+    this.tokenPath = options?.tokenPath || path.join(process.cwd(), 'gmail-tokens.json');
 
     this.oauth2Client = new google.auth.OAuth2(
       process.env.GMAIL_CLIENT_ID,
@@ -39,11 +38,23 @@ export class GmailClient {
    * Inicializa o cliente Gmail com autenticação.
    */
   async initialize(): Promise<void> {
+    console.log('[GmailClient] Iniciando inicialização...');
+    console.log('[GmailClient] Buscando token em:', this.tokenPath);
+    console.log('[GmailClient] CWD:', process.cwd());
+    
     // Tenta carregar token existente
     if (fs.existsSync(this.tokenPath)) {
-      const token = JSON.parse(fs.readFileSync(this.tokenPath, 'utf-8'));
-      this.oauth2Client.setCredentials(token);
+      console.log('[GmailClient] Token encontrado, carregando...');
+      try {
+        const token = JSON.parse(fs.readFileSync(this.tokenPath, 'utf-8'));
+        this.oauth2Client.setCredentials(token);
+        console.log('[GmailClient] Credenciais configuradas');
+      } catch (error) {
+        console.error('[GmailClient] Erro ao ler token:', error);
+        throw new Error(`Falha ao ler token: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      }
     } else {
+      console.log('[GmailClient] Token não encontrado em:', this.tokenPath);
       // Se não tem token, precisa autorizar
       await this.authorize();
     }
@@ -316,6 +327,51 @@ export class GmailClient {
     });
 
     return response.data.id!;
+  }
+
+  /**
+   * Obtém ou cria um label pelo nome.
+   */
+  async getOrCreateLabel(name: string): Promise<string> {
+    const labels = await this.getLabels();
+    const existing = labels.find(l => l.name === name);
+    
+    if (existing) {
+      return existing.id;
+    }
+    
+    console.log(`[GmailClient] Criando label: ${name}`);
+    return await this.createLabel(name);
+  }
+
+  /**
+   * Marca email como processado (adiciona label).
+   */
+  async markAsProcessed(messageId: string, labelId: string): Promise<void> {
+    await this.addLabel(messageId, labelId);
+  }
+
+  /**
+   * Baixa o conteúdo de um anexo.
+   */
+  async getAttachmentContent(messageId: string, attachmentId: string): Promise<Buffer> {
+    if (!this.gmail) {
+      throw new Error('Gmail client não inicializado');
+    }
+
+    const response = await this.gmail.users.messages.attachments.get({
+      userId: 'me',
+      messageId,
+      id: attachmentId,
+    });
+
+    if (!response.data.data) {
+      throw new Error('Anexo sem conteúdo');
+    }
+
+    // O conteúdo vem em base64 URL-safe, precisamos converter
+    const base64 = response.data.data.replace(/-/g, '+').replace(/_/g, '/');
+    return Buffer.from(base64, 'base64');
   }
 
   private stripHtml(html: string): string {

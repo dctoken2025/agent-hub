@@ -4,7 +4,6 @@ import {
   Play, 
   Pause, 
   RotateCcw,
-  Settings,
   Activity
 } from 'lucide-react';
 import { cn, apiRequest } from '@/lib/utils';
@@ -158,22 +157,23 @@ export function Agents() {
                     }
                   </p>
                 </div>
-                {agent.config.schedule && (
-                  <>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Intervalo</p>
-                      <p className="text-sm font-medium">
-                        {agent.config.schedule.value} min
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Habilitado</p>
-                      <p className="text-sm font-medium">
-                        {agent.config.enabled ? 'Sim' : 'Não'}
-                      </p>
-                    </div>
-                  </>
-                )}
+                <div>
+                  <p className="text-xs text-muted-foreground">Intervalo</p>
+                  <p className="text-sm font-medium">
+                    {agent.config.schedule?.type === 'manual' 
+                      ? 'Sob demanda'
+                      : agent.config.schedule?.type === 'interval'
+                        ? `${agent.config.schedule.value} min`
+                        : 'Não configurado'
+                    }
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Habilitado</p>
+                  <p className="text-sm font-medium">
+                    {agent.config.enabled ? 'Sim' : 'Não'}
+                  </p>
+                </div>
               </div>
 
               {/* Actions */}
@@ -204,11 +204,6 @@ export function Agents() {
                 >
                   <RotateCcw className="h-4 w-4" />
                   Executar
-                </button>
-                <button
-                  className="flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
-                >
-                  <Settings className="h-4 w-4" />
                 </button>
               </div>
             </div>

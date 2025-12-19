@@ -3,7 +3,7 @@ export { EmailAgent } from './email-agent.js';
 export { GmailClient } from './gmail-client.js';
 export { EmailClassifier } from './email-classifier.js';
 
-// Types
+// Types from types.ts
 export type {
   Email,
   EmailAddress,
@@ -14,6 +14,12 @@ export type {
   ClassifiedEmail,
   EmailAgentConfig,
 } from './types.js';
+
+// Types from email-agent.ts
+export type { EmailAgentResult } from './email-agent.js';
+
+// Re-export from legal-agent for convenience
+export type { ContractAnalysis } from '@agent-hub/legal-agent';
 
 // Schemas
 export { EmailAgentConfigSchema, EmailClassificationSchema } from './types.js';

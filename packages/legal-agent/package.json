@@ -1,7 +1,7 @@
 {
-  "name": "@agent-hub/email-agent",
+  "name": "@agent-hub/legal-agent",
   "version": "1.0.0",
-  "description": "Agente autônomo para classificação e triagem de emails",
+  "description": "Agente jurídico para análise de contratos e documentos legais",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,12 +20,13 @@
   },
   "dependencies": {
     "@agent-hub/core": "*",
-    "@agent-hub/legal-agent": "*",
-    "googleapis": "^144.0.0",
+    "pdf-parse": "^1.1.1",
+    "mammoth": "^1.8.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/pdf-parse": "^1.1.4",
     "typescript": "^5.7.2"
   }
 }

@@ -1,7 +1,7 @@
 {
-  "name": "@agent-hub/email-agent",
+  "name": "@agent-hub/stablecoin-agent",
   "version": "1.0.0",
-  "description": "Agente autônomo para classificação e triagem de emails",
+  "description": "Agente autônomo para monitoramento de stablecoins na blockchain",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,9 +20,7 @@
   },
   "dependencies": {
     "@agent-hub/core": "*",
-    "@agent-hub/legal-agent": "*",
-    "googleapis": "^144.0.0",
-    "zod": "^3.23.8"
+    "alchemy-sdk": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

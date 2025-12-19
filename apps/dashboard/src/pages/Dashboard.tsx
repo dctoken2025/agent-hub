@@ -35,7 +35,7 @@ interface AgentInfo {
 }
 
 export function Dashboard() {
-  const { data: emailStats, isLoading: loadingStats } = useQuery({
+  const { data: emailStats } = useQuery({
     queryKey: ['emailStats'],
     queryFn: () => apiRequest<EmailStats>('/emails/stats'),
     refetchInterval: 30000,

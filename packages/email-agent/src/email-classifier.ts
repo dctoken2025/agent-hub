@@ -27,11 +27,10 @@ export class EmailClassifier {
     const aiClient = getAIClient();
     
     const emailContext = this.buildEmailContext(email);
-    const systemPrompt = this.buildSystemPrompt();
 
     const result = await aiClient.analyze<EmailClassification>(
       emailContext,
-      'Analise este email e classifique-o conforme as instruções.',
+      this.buildSystemPrompt() + '\n\nAnalise este email e classifique-o conforme as instruções.',
       EmailClassificationSchema as AITool
     );
 
@@ -48,8 +47,39 @@ export class EmailClassifier {
    */
   private quickClassify(email: Email): EmailClassification | null {
     const fromEmail = email.from.email.toLowerCase();
+    const subject = email.subject.toLowerCase();
+    const body = email.body.toLowerCase();
+    const content = `${subject} ${body} ${fromEmail}`;
 
+    // ===========================================
+    // PRIORIDADE MÁXIMA: Documentos para assinar
+    // ===========================================
+    const signaturePortals = [
+      'docusign', 'clicksign', 'd4sign', 'autentique', 'zapsign',
+      'adobe sign', 'hellosign', 'pandadoc', 'signaturit', 'certisign',
+      'valid certificadora', 'assinatura digital', 'assinatura eletrônica',
+      'documento para assinar', 'aguardando sua assinatura',
+      'pending signature', 'sign document', 'please sign',
+      'assine o documento', 'assinar contrato', 'assinatura pendente'
+    ];
+
+    if (signaturePortals.some(portal => content.includes(portal))) {
+      return {
+        priority: 'urgent',
+        action: 'respond_now',
+        confidence: 98,
+        reasoning: 'Documento aguardando assinatura - requer ação imediata',
+        tags: ['assinatura', 'documento', 'contrato'],
+        sentiment: 'urgent',
+        isDirectedToMe: true,
+        requiresAction: true,
+        deadline: 'hoje',
+      };
+    }
+
+    // ===========================================
     // Remetente VIP = sempre alta prioridade
+    // ===========================================
     if (this.config.vipSenders.some(vip => fromEmail.includes(vip.toLowerCase()))) {
       return {
         priority: 'urgent',
@@ -63,7 +93,9 @@ export class EmailClassifier {
       };
     }
 
+    // ===========================================
     // Remetente ignorado = baixa prioridade
+    // ===========================================
     if (this.config.ignoreSenders.some(ignore => fromEmail.includes(ignore.toLowerCase()))) {
       return {
         priority: 'low',
@@ -77,7 +109,9 @@ export class EmailClassifier {
       };
     }
 
-    // Usuário está apenas em CC = provavelmente só informativo
+    // ===========================================
+    // Usuário está apenas em CC
+    // ===========================================
     const isInCC = email.cc?.some(cc => 
       cc.email.toLowerCase() === this.config.userEmail.toLowerCase()
     );
@@ -98,7 +132,9 @@ export class EmailClassifier {
       };
     }
 
+    // ===========================================
     // Newsletters e marketing
+    // ===========================================
     if (this.isNewsletter(email)) {
       return {
         priority: 'low',
@@ -119,18 +155,47 @@ export class EmailClassifier {
    * Verifica se é newsletter/marketing.
    */
   private isNewsletter(email: Email): boolean {
+    const fromEmail = email.from.email.toLowerCase();
+    const subject = email.subject.toLowerCase();
+    const body = email.body.toLowerCase();
+    const content = `${subject} ${body} ${fromEmail}`;
+
+    // Indicadores de newsletter/marketing
     const indicators = [
-      'unsubscribe',
-      'newsletter',
-      'marketing',
-      'noreply',
-      'no-reply',
-      'mailer-daemon',
-      'descadastrar',
-      'cancelar inscrição',
+      'unsubscribe', 'newsletter', 'marketing', 'noreply', 'no-reply',
+      'mailer-daemon', 'descadastrar', 'cancelar inscrição', 'email automático',
+      'não responda', 'bulk mail', 'promotional', 'promo', 'ofertas',
+      'off today', '% off', 'sale ends', 'limited time', 'act now',
+      'click here', 'view in browser', 'update preferences',
     ];
 
-    const content = `${email.subject} ${email.body} ${email.from.email}`.toLowerCase();
+    // Domínios conhecidos de marketing/notificações automáticas
+    const autoSenders = [
+      'amazonses.com', 'sendgrid.net', 'mailchimp', 'mailgun',
+      'constantcontact', 'hubspot', 'salesforce', 'marketo',
+      'notifications@', 'notify@', 'alerts@', 'updates@',
+      'news@', 'info@', 'promo@', 'marketing@', 'newsletter@',
+      'noreply@', 'no-reply@', 'donotreply@', 'mailer@',
+      // Notificações de apps/serviços
+      'github.com', 'gitlab.com', 'bitbucket.org', 'jira', 'atlassian',
+      'slack.com', 'notion.so', 'figma.com', 'linear.app',
+      'trello.com', 'asana.com', 'monday.com', 'clickup.com',
+      'zoom.us', 'calendly.com', 'meetup.com',
+      // Transações/Recibos
+      'paypal', 'stripe', 'mercadopago', 'pagseguro', 'iugu',
+      'uber.com', '99app', 'ifood', 'rappi',
+      // Redes sociais
+      'linkedin.com', 'twitter.com', 'facebook.com', 'instagram.com',
+      'facebookmail.com', 'pinterest.com', 'tiktok.com',
+      // E-commerce
+      'amazon.com', 'mercadolivre', 'shopee', 'aliexpress', 'magazineluiza',
+      'americanas', 'submarino', 'casasbahia', 'extra.com',
+    ];
+
+    if (autoSenders.some(sender => fromEmail.includes(sender))) {
+      return true;
+    }
+
     return indicators.some(indicator => content.includes(indicator));
   }
 
@@ -150,7 +215,7 @@ Data: ${email.date.toISOString()}
 Tem anexos: ${email.hasAttachments ? 'Sim' : 'Não'}
 
 === CORPO DO EMAIL ===
-${email.body.substring(0, 3000)}${email.body.length > 3000 ? '\n[...truncado...]' : ''}
+${email.body.substring(0, 4000)}${email.body.length > 4000 ? '\n[...truncado...]' : ''}
 
 === CONTEXTO ===
 - Meu email: ${this.config.userEmail}
@@ -163,35 +228,122 @@ ${email.body.substring(0, 3000)}${email.body.length > 3000 ? '\n[...truncado...]
    * System prompt para a IA.
    */
   private buildSystemPrompt(): string {
-    return `Você é um assistente especializado em triagem de emails corporativos.
-Sua tarefa é analisar emails e classificá-los para ajudar o usuário a priorizar sua caixa de entrada.
+    return `Você é um assistente executivo especializado em triagem de emails corporativos para um profissional do mercado financeiro/fintech.
 
-REGRAS DE CLASSIFICAÇÃO:
+Seu objetivo é analisar cada email e classificá-lo para ajudar o usuário a priorizar sua caixa de entrada de forma eficiente.
 
-1. PRIORIDADE:
-   - urgent: Requer resposta imediata, deadline apertado, problema crítico
-   - attention: Importante mas não urgente, merece leitura atenta
-   - informative: Informações úteis, updates de projetos
-   - low: Newsletters, marketing, FYIs gerais
-   - cc_only: Usuário está apenas em cópia
+═══════════════════════════════════════════════════════════════
+REGRAS DE PRIORIDADE MÁXIMA (sempre "urgent")
+═══════════════════════════════════════════════════════════════
 
-2. AÇÃO RECOMENDADA:
-   - respond_now: Responder imediatamente
-   - respond_later: Pode responder em até 24h
-   - read_only: Apenas ler, não precisa responder
-   - mark_read: Pode marcar como lido sem ler
-   - archive: Pode arquivar diretamente
-   - delegate: Sugerir delegação para outra pessoa
+1. DOCUMENTOS PARA ASSINAR
+   - Emails de portais de assinatura (DocuSign, ClickSign, D4Sign, Autentique, ZapSign, etc.)
+   - Contratos aguardando assinatura
+   - Procurações, termos, acordos pendentes
+   - Qualquer documento que mencione "assinar", "assinatura pendente", "aguardando assinatura"
 
-3. ANÁLISE DE SENTIMENTO:
-   - Detecte frustração, urgência ou tom negativo
-   - Identifique cobranças ou pressão implícita
-   - Note quando há elogios ou feedback positivo
+2. QUESTÕES FINANCEIRAS URGENTES
+   - Problemas com pagamentos
+   - Transferências bancárias pendentes de aprovação
+   - Questões de compliance com prazo
+   - Auditoria ou regulatório
 
-4. TAGS:
-   - Use tags relevantes como: financeiro, projeto, reunião, cobrança, suporte, etc.
+3. CLIENTES/PARCEIROS IMPORTANTES
+   - Reclamações de clientes
+   - Questões de suporte crítico
+   - Parceiros estratégicos com problemas
 
-Seja conciso na explicação. Foque em ser útil e economizar o tempo do usuário.`;
+4. PRAZOS CRÍTICOS
+   - Deadlines mencionados para hoje ou amanhã
+   - "Urgente", "ASAP", "imediato" no assunto ou corpo
+   - Cobranças explícitas
+
+═══════════════════════════════════════════════════════════════
+NÍVEIS DE PRIORIDADE
+═══════════════════════════════════════════════════════════════
+
+🔴 urgent (Urgente)
+   - Requer resposta/ação IMEDIATA (hoje)
+   - Documentos para assinar
+   - Problemas críticos
+   - Deadline iminente
+
+🟠 attention (Atenção)
+   - Importante mas pode esperar algumas horas
+   - Requer leitura atenta
+   - Decisões a tomar
+   - Reuniões importantes
+
+🟡 informative (Informativo)
+   - Atualizações de projetos
+   - Informações úteis para contexto
+   - Relatórios e status
+   - Pode ler quando tiver tempo
+
+🟢 low (Baixa)
+   - Newsletters
+   - Marketing/promoções
+   - FYIs gerais
+   - Pode marcar como lido
+
+📎 cc_only (Apenas Cópia)
+   - Usuário está em CC
+   - Geralmente só para conhecimento
+   - Raramente requer ação
+
+═══════════════════════════════════════════════════════════════
+AÇÕES RECOMENDADAS
+═══════════════════════════════════════════════════════════════
+
+- respond_now: Responder imediatamente (minutos)
+- respond_later: Responder em até 24h
+- read_only: Apenas ler, sem necessidade de resposta
+- mark_read: Pode marcar como lido sem ler detalhadamente
+- archive: Pode arquivar diretamente
+- delegate: Sugerir delegação para equipe
+
+═══════════════════════════════════════════════════════════════
+ANÁLISE DE SENTIMENTO E TOM
+═══════════════════════════════════════════════════════════════
+
+Detecte e reporte:
+- Frustração ou insatisfação do remetente
+- Cobranças implícitas ou explícitas
+- Tom passivo-agressivo
+- Urgência real vs. urgência artificial
+- Elogios ou feedback positivo
+
+Sentimentos possíveis:
+- positive: Email positivo, elogio, agradecimento
+- neutral: Tom normal, profissional
+- negative: Reclamação, frustração, problema
+- urgent: Urgência genuína detectada
+
+═══════════════════════════════════════════════════════════════
+TAGS SUGERIDAS
+═══════════════════════════════════════════════════════════════
+
+Use tags relevantes como:
+- assinatura, contrato, documento
+- financeiro, pagamento, cobrança
+- reunião, agenda, calendar
+- projeto, desenvolvimento, produto
+- cliente, parceiro, fornecedor
+- compliance, regulatório, jurídico
+- suporte, bug, problema
+- rh, administrativo, interno
+
+═══════════════════════════════════════════════════════════════
+INSTRUÇÕES FINAIS
+═══════════════════════════════════════════════════════════════
+
+1. Seja CONSERVADOR ao classificar como "low" - na dúvida, suba a prioridade
+2. Qualquer menção a assinatura de documento = SEMPRE urgent
+3. Se detectar deadline, mencione na explicação
+4. Seja conciso no reasoning (1-2 frases)
+5. Sugira resposta apenas se for óbvio o que responder
+
+Lembre-se: Seu objetivo é ECONOMIZAR TEMPO do usuário, priorizando o que realmente importa.`;
   }
 
   /**

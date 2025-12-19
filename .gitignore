@@ -34,5 +34,9 @@ coverage/
 # Credentials (IMPORTANT - never commit!)
 credentials.json
 token.json
+gmail-tokens.json
 *.pem
 *.key
+
+# App config with sensitive data
+apps/api/config.json

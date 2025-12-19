@@ -15,8 +15,8 @@ export interface AgentConfig {
 }
 
 export interface ScheduleConfig {
-  type: 'interval' | 'cron';
-  value: string | number; // minutos para interval, cron expression para cron
+  type: 'interval' | 'cron' | 'manual';
+  value?: string | number; // minutos para interval, cron expression para cron, undefined para manual
 }
 
 export interface AgentResult<T = unknown> {
@@ -112,8 +112,8 @@ export const AgentConfigSchema = z.object({
   description: z.string(),
   enabled: z.boolean(),
   schedule: z.object({
-    type: z.enum(['interval', 'cron']),
-    value: z.union([z.string(), z.number()]),
+    type: z.enum(['interval', 'cron', 'manual']),
+    value: z.union([z.string(), z.number()]).optional(),
   }).optional(),
 });
 

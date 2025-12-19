@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Mail, 
   AlertCircle, 
@@ -8,10 +8,13 @@ import {
   User,
   Calendar,
   Tag,
-  RefreshCw
+  RefreshCw,
+  CheckCheck,
+  ArchiveX
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn, apiRequest } from '@/lib/utils';
+import { useDialog } from '@/components/Dialog';
 
 interface EmailClassification {
   priority: string;
@@ -30,6 +33,8 @@ interface ClassifiedEmail {
   subject: string;
   snippet: string;
   date: string;
+  isRead: boolean;
+  isArchived: boolean;
   classification: EmailClassification;
 }
 
@@ -49,24 +54,98 @@ const priorityConfig = {
   cc_only: { label: 'Apenas CC', color: 'bg-gray-300', icon: Mail },
 };
 
+type ReadFilter = 'unread' | 'read' | 'all';
+
 export function Emails() {
   const [selectedPriority, setSelectedPriority] = useState<string | null>(null);
+  const [readFilter, setReadFilter] = useState<ReadFilter>('unread');
+  const queryClient = useQueryClient();
+  const dialog = useDialog();
   
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['emails'],
-    queryFn: () => apiRequest<EmailsResponse>('/emails'),
+    queryFn: () => apiRequest<EmailsResponse>('/emails?limit=1000'),
     refetchInterval: 30000,
   });
 
+  const markReadMutation = useMutation({
+    mutationFn: (priority: string) => 
+      apiRequest('/emails/mark-read', { 
+        method: 'POST',
+        body: JSON.stringify({ priority }),
+      }),
+    onSuccess: (data: any) => {
+      dialog.success(`${data.count || 0} emails marcados como lidos!`);
+      queryClient.invalidateQueries({ queryKey: ['emails'] });
+    },
+    onError: (error: any) => {
+      dialog.error(error.message);
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: (priority: string) => 
+      apiRequest('/emails/archive', { 
+        method: 'POST',
+        body: JSON.stringify({ priority }),
+      }),
+    onSuccess: (data: any) => {
+      dialog.success(`${data.count || 0} emails arquivados!`);
+      queryClient.invalidateQueries({ queryKey: ['emails'] });
+    },
+    onError: (error: any) => {
+      dialog.error(error.message);
+    },
+  });
+
   const emails = data?.emails || [];
-  const filteredEmails = selectedPriority 
-    ? emails.filter(e => e.classification.priority === selectedPriority)
-    : emails;
+  
+  // Aplica filtros: primeiro por lido/não lido, depois por prioridade
+  const filteredEmails = emails.filter(e => {
+    // Filtro de lido/não lido
+    if (readFilter === 'unread' && e.isRead) return false;
+    if (readFilter === 'read' && !e.isRead) return false;
+    
+    // Filtro de prioridade
+    if (selectedPriority && e.classification.priority !== selectedPriority) return false;
+    
+    return true;
+  });
+  
+  // Conta emails por status de leitura (para os badges)
+  const unreadCount = emails.filter(e => !e.isRead).length;
+  const readCount = emails.filter(e => e.isRead).length;
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleFetchEmails = async () => {
-    await apiRequest('/emails/fetch', { method: 'POST' });
-    setTimeout(() => refetch(), 2000);
+    try {
+      setIsRefreshing(true);
+      await apiRequest('/emails/fetch', { method: 'POST' });
+      // Aguarda o agente processar e depois atualiza
+      setTimeout(() => {
+        refetch();
+        setIsRefreshing(false);
+      }, 5000);
+    } catch (error) {
+      console.error('Erro ao buscar emails:', error);
+      setIsRefreshing(false);
+      dialog.error('Erro ao buscar emails. Verifique o console.');
+    }
   };
+
+  const handleRefreshList = () => {
+    refetch();
+  };
+
+  // Verifica se a prioridade selecionada permite ações em massa
+  // Só mostra ações em massa se houver emails não lidos da prioridade selecionada
+  const unreadInPriority = selectedPriority 
+    ? emails.filter(e => e.classification.priority === selectedPriority && !e.isRead).length 
+    : 0;
+  const canBulkAction = selectedPriority && 
+    ['low', 'informative', 'cc_only'].includes(selectedPriority) && 
+    unreadInPriority > 0;
 
   return (
     <div className="space-y-6">
@@ -78,16 +157,91 @@ export function Emails() {
             {emails.length} emails processados
           </p>
         </div>
-        <button
-          onClick={handleFetchEmails}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Atualizar
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleRefreshList}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Recarregar Lista
+          </button>
+          <button
+            onClick={handleFetchEmails}
+            disabled={isRefreshing}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            <Mail className={`h-4 w-4 ${isRefreshing ? 'animate-pulse' : ''}`} />
+            {isRefreshing ? 'Buscando...' : 'Buscar Novos Emails'}
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
+      {/* Bulk Actions */}
+      {canBulkAction && (
+        <div className="flex items-center gap-2 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+          <span className="text-sm text-blue-700 dark:text-blue-300">
+            Ações em massa para {unreadInPriority} email(s) "{priorityConfig[selectedPriority as keyof typeof priorityConfig]?.label}" não lido(s):
+          </span>
+          <button
+            onClick={() => markReadMutation.mutate(selectedPriority)}
+            disabled={markReadMutation.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+          >
+            <CheckCheck className="h-4 w-4" />
+            {markReadMutation.isPending ? 'Marcando...' : 'Marcar Todos como Lido'}
+          </button>
+          <button
+            onClick={() => archiveMutation.mutate(selectedPriority)}
+            disabled={archiveMutation.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
+          >
+            <ArchiveX className="h-4 w-4" />
+            {archiveMutation.isPending ? 'Arquivando...' : 'Arquivar Todos'}
+          </button>
+        </div>
+      )}
+
+      {/* Filtro de Lido/Não Lido */}
+      <div className="flex items-center gap-4">
+        <div className="flex bg-secondary rounded-lg p-1">
+          <button
+            onClick={() => setReadFilter('unread')}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+              readFilter === 'unread'
+                ? "bg-white dark:bg-gray-800 text-primary shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            📬 Não Lidos ({unreadCount})
+          </button>
+          <button
+            onClick={() => setReadFilter('read')}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+              readFilter === 'read'
+                ? "bg-white dark:bg-gray-800 text-primary shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            ✅ Lidos ({readCount})
+          </button>
+          <button
+            onClick={() => setReadFilter('all')}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+              readFilter === 'all'
+                ? "bg-white dark:bg-gray-800 text-primary shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            📧 Todos ({emails.length})
+          </button>
+        </div>
+      </div>
+
+      {/* Filtros de Prioridade */}
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setSelectedPriority(null)}
@@ -98,10 +252,15 @@ export function Emails() {
               : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
           )}
         >
-          Todos ({emails.length})
+          Todas Prioridades
         </button>
         {Object.entries(priorityConfig).map(([key, config]) => {
-          const count = emails.filter(e => e.classification.priority === key).length;
+          // Conta apenas emails que passam pelo filtro de lido/não lido
+          const count = emails.filter(e => {
+            if (readFilter === 'unread' && e.isRead) return false;
+            if (readFilter === 'read' && !e.isRead) return false;
+            return e.classification.priority === key;
+          }).length;
           return (
             <button
               key={key}
