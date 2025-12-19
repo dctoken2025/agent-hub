@@ -36,9 +36,12 @@ interface ClassifiedEmail {
   from: { name?: string; email: string };
   subject: string;
   snippet: string;
+  body?: string;
   date: string;
+  emailDate: string;
   isRead: boolean;
   isArchived: boolean;
+  hasAttachments?: boolean;
   classification: EmailClassification;
 }
 
@@ -78,6 +81,7 @@ export function Emails() {
   const [replyingTo, setReplyingTo] = useState<ClassifiedEmail | null>(null);
   const [replyMessage, setReplyMessage] = useState('');
   const [bulkActionProgress, setBulkActionProgress] = useState<{ action: string; count: number; total: number } | null>(null);
+  const [selectedEmail, setSelectedEmail] = useState<ClassifiedEmail | null>(null);
   const queryClient = useQueryClient();
   const dialog = useDialog();
   
@@ -530,7 +534,8 @@ export function Emails() {
             return (
               <div 
                 key={email.id}
-                className="p-4 bg-card rounded-xl border hover:shadow-md transition-shadow"
+                onClick={() => setSelectedEmail(email)}
+                className="p-4 bg-card rounded-xl border hover:shadow-md transition-shadow cursor-pointer hover:border-primary/50"
               >
                 <div className="flex items-start gap-4">
                   {/* Priority indicator */}
@@ -607,7 +612,10 @@ export function Emails() {
                     </span>
                     
                     <button
-                      onClick={() => handleReply(email)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReply(email);
+                      }}
                       className="flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
                     >
                       <Reply className="h-3.5 w-3.5" />
@@ -618,6 +626,120 @@ export function Emails() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Modal de visualização do email */}
+      {selectedEmail && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setSelectedEmail(null)}
+        >
+          <div 
+            className="bg-card rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-6 border-b bg-muted/30">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className={cn(
+                      "px-2 py-1 text-xs font-medium rounded-full text-white",
+                      priorityConfig[selectedEmail.classification.priority as keyof typeof priorityConfig]?.color || 'bg-gray-500'
+                    )}>
+                      {priorityConfig[selectedEmail.classification.priority as keyof typeof priorityConfig]?.label || selectedEmail.classification.priority}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {Math.round(selectedEmail.classification.confidence * 100)}% confiança
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-semibold text-foreground truncate">
+                    {selectedEmail.subject || '(Sem assunto)'}
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setSelectedEmail(null)}
+                  className="p-2 hover:bg-muted rounded-lg transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Metadata */}
+              <div className="mt-4 space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">{selectedEmail.from.name || selectedEmail.from.email}</span>
+                  <span className="text-muted-foreground">&lt;{selectedEmail.from.email}&gt;</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">{formatDateTime(selectedEmail.emailDate)}</span>
+                </div>
+                {selectedEmail.classification.tags && selectedEmail.classification.tags.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Tag className="h-4 w-4 text-muted-foreground" />
+                    {selectedEmail.classification.tags.map((tag, i) => (
+                      <span key={i} className="px-2 py-0.5 text-xs bg-muted rounded-full">{tag}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* AI Analysis */}
+            {selectedEmail.classification.reasoning && (
+              <div className="p-4 border-b bg-blue-50/50 dark:bg-blue-950/20">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm">
+                    <span className="font-medium text-blue-700 dark:text-blue-400">Análise da IA: </span>
+                    <span className="text-blue-600 dark:text-blue-300">{selectedEmail.classification.reasoning}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Email Body */}
+            <div className="flex-1 overflow-auto p-6">
+              <div 
+                className="prose prose-sm dark:prose-invert max-w-none"
+                style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+              >
+                {selectedEmail.body || selectedEmail.snippet || '(Sem conteúdo)'}
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="p-4 border-t bg-muted/30 flex items-center justify-between">
+              <div className="text-xs text-muted-foreground">
+                {selectedEmail.hasAttachments && (
+                  <span className="flex items-center gap-1">
+                    📎 Este email possui anexos
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setSelectedEmail(null);
+                    handleReply(selectedEmail);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                >
+                  <Reply className="h-4 w-4" />
+                  Responder
+                </button>
+                <button
+                  onClick={() => setSelectedEmail(null)}
+                  className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
