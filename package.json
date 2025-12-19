@@ -1,0 +1,29 @@
+{
+  "name": "agent-hub",
+  "version": "1.0.0",
+  "description": "Hub de Agentes Autônomos - Framework para assistentes de IA",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "dev:dashboard": "npm run dev --workspace=@agent-hub/dashboard",
+    "dev:api": "npm run dev --workspace=@agent-hub/api",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "clean": "turbo clean && rm -rf node_modules",
+    "typecheck": "turbo typecheck",
+    "cli": "npm run start --workspace=@agent-hub/cli"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "npm@10.2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
