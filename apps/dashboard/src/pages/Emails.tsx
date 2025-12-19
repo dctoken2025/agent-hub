@@ -169,6 +169,7 @@ export function Emails() {
   const readCount = emails.filter(e => e.isRead).length;
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const handleFetchEmails = async () => {
     try {
@@ -183,6 +184,33 @@ export function Emails() {
       console.error('Erro ao buscar emails:', error);
       setIsRefreshing(false);
       dialog.error('Erro ao buscar emails. Verifique o console.');
+    }
+  };
+
+  const handleSyncFromGmail = async () => {
+    try {
+      setIsSyncing(true);
+      setBulkActionProgress({ action: 'Sincronizando do Gmail', count: 0, total: 0 });
+      
+      const result = await apiRequest<{ synced: number; found: number; alreadyInDb: number }>('/emails/sync-from-gmail', { 
+        method: 'POST',
+        body: JSON.stringify({ limit: 500 }),
+      });
+      
+      setBulkActionProgress(null);
+      
+      if (result.synced > 0) {
+        dialog.success(`${result.synced} emails sincronizados! (${result.alreadyInDb} já estavam no banco)`);
+        refetch();
+      } else {
+        dialog.success(`Todos os ${result.found} emails do Gmail já estão sincronizados!`);
+      }
+    } catch (error: any) {
+      console.error('Erro ao sincronizar:', error);
+      dialog.error(error.message || 'Erro ao sincronizar do Gmail.');
+    } finally {
+      setIsSyncing(false);
+      setBulkActionProgress(null);
     }
   };
 
@@ -236,11 +264,20 @@ export function Emails() {
           </button>
           <button
             onClick={handleFetchEmails}
-            disabled={isRefreshing}
+            disabled={isRefreshing || isSyncing}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
             <Mail className={`h-4 w-4 ${isRefreshing ? 'animate-pulse' : ''}`} />
             {isRefreshing ? 'Buscando...' : 'Buscar Novos Emails'}
+          </button>
+          <button
+            onClick={handleSyncFromGmail}
+            disabled={isSyncing || isRefreshing}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50"
+            title="Sincroniza emails marcados no Gmail que não estão no banco"
+          >
+            <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Sincronizando...' : 'Sincronizar do Gmail'}
           </button>
         </div>
       </div>

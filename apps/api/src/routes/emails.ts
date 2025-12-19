@@ -1051,4 +1051,153 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
       });
     }
   });
+
+  // Sincroniza emails que estão marcados no Gmail mas não estão no banco
+  app.post<{ Body: { limit?: number } }>('/sync-from-gmail', async (request, reply) => {
+    const { limit = 100 } = request.body || {};
+
+    try {
+      console.log('[EmailRoutes] 🔄 Iniciando sincronização do Gmail...');
+      console.log(`[EmailRoutes] Limite: ${limit} emails`);
+      
+      const { GmailClient, EmailClassifier } = await import('@agent-hub/email-agent');
+      
+      const gmailClient = new GmailClient();
+      await gmailClient.initialize();
+
+      const PROCESSED_LABEL_NAME = 'AgentHub-Processado';
+      
+      // Busca emails COM a label de processado (já foram processados no Gmail)
+      console.log('[EmailRoutes] 🔍 Buscando emails com label AgentHub-Processado no Gmail...');
+      let allProcessedEmails: any[] = [];
+      let pageToken: string | undefined;
+      
+      while (allProcessedEmails.length < limit) {
+        const { emails: pageEmails, nextPageToken } = await gmailClient.getEmails({
+          maxResults: 100,
+          query: `label:${PROCESSED_LABEL_NAME}`,
+          pageToken,
+        });
+        
+        allProcessedEmails.push(...pageEmails);
+        console.log(`[EmailRoutes] Página carregada: ${pageEmails.length} emails (total: ${allProcessedEmails.length})`);
+        
+        if (!nextPageToken || pageEmails.length === 0) break;
+        pageToken = nextPageToken;
+      }
+
+      console.log(`[EmailRoutes] 📧 Encontrados ${allProcessedEmails.length} emails com label no Gmail`);
+
+      if (allProcessedEmails.length === 0) {
+        return {
+          success: true,
+          message: 'Nenhum email com label AgentHub-Processado encontrado no Gmail',
+          found: 0,
+          synced: 0,
+          alreadyInDb: 0,
+        };
+      }
+
+      // Verifica quais NÃO existem no banco
+      const db = getDb();
+      if (!db) {
+        return reply.status(500).send({ error: 'Banco de dados não disponível' });
+      }
+
+      const emailsToSync: any[] = [];
+      let alreadyInDb = 0;
+
+      for (const email of allProcessedEmails) {
+        const existing = await db.select()
+          .from(classifiedEmails)
+          .where(eq(classifiedEmails.emailId, email.id))
+          .limit(1);
+
+        if (existing.length === 0) {
+          emailsToSync.push(email);
+        } else {
+          alreadyInDb++;
+        }
+      }
+
+      console.log(`[EmailRoutes] 📊 ${emailsToSync.length} emails para sincronizar, ${alreadyInDb} já no banco`);
+
+      if (emailsToSync.length === 0) {
+        return {
+          success: true,
+          message: 'Todos os emails do Gmail já estão no banco',
+          found: allProcessedEmails.length,
+          synced: 0,
+          alreadyInDb,
+        };
+      }
+
+      // Classifica e salva os emails que não estão no banco
+      const config = await import('./config.js').then(m => m.loadConfig());
+      const classifier = new EmailClassifier({
+        userEmail: config.user?.email || '',
+        vipSenders: config.user?.vipSenders || [],
+        ignoreSenders: config.user?.ignoreSenders || [],
+        labelsToProcess: ['INBOX'],
+        maxEmailsPerRun: 100,
+        unreadOnly: false,
+      });
+
+      let syncedCount = 0;
+
+      for (const email of emailsToSync) {
+        try {
+          console.log(`[EmailRoutes] 📧 Sincronizando: ${email.subject?.substring(0, 50)}...`);
+          
+          const classification = await classifier.classify(email);
+          
+          await db.insert(classifiedEmails).values({
+            emailId: email.id,
+            threadId: email.threadId,
+            fromEmail: email.from?.email || '',
+            fromName: email.from?.name || '',
+            toEmails: JSON.stringify(email.to || []),
+            ccEmails: JSON.stringify(email.cc || []),
+            subject: email.subject || '',
+            snippet: email.snippet || '',
+            body: (email.body || '').substring(0, 10000),
+            priority: classification.priority,
+            action: classification.action,
+            confidence: classification.confidence,
+            reasoning: classification.reasoning,
+            suggestedResponse: classification.suggestedResponse,
+            tags: JSON.stringify(classification.tags),
+            sentiment: classification.sentiment,
+            isDirectedToMe: classification.isDirectedToMe,
+            requiresAction: classification.requiresAction,
+            deadline: classification.deadline,
+            emailDate: new Date(email.date),
+            classifiedAt: new Date(),
+            hasAttachments: email.hasAttachments || false,
+            isRead: false,
+          });
+          
+          syncedCount++;
+        } catch (error) {
+          console.error(`[EmailRoutes] ❌ Erro ao sincronizar ${email.id}:`, error);
+        }
+      }
+
+      console.log(`[EmailRoutes] ✅ Sincronização concluída: ${syncedCount} emails sincronizados`);
+
+      return {
+        success: true,
+        message: `${syncedCount} emails sincronizados do Gmail para o banco`,
+        found: allProcessedEmails.length,
+        synced: syncedCount,
+        alreadyInDb,
+      };
+
+    } catch (error) {
+      console.error('[EmailRoutes] ❌ Erro na sincronização:', error);
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Erro ao sincronizar',
+      });
+    }
+  });
 };
