@@ -2,6 +2,44 @@ import type { FastifyPluginAsync } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { getDb, appConfig, isDatabaseConnected } from '../db/index.js';
 
+// Regra de classificação personalizada
+export interface ClassificationRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  condition: {
+    field: 'subject' | 'body' | 'from' | 'all'; // onde procurar
+    operator: 'contains' | 'startsWith' | 'endsWith' | 'equals' | 'regex';
+    value: string; // termo ou padrão
+    caseSensitive?: boolean;
+  };
+  action: {
+    priority: 'urgent' | 'attention' | 'informative' | 'low' | 'cc_only';
+    tags?: string[];
+    requiresAction?: boolean;
+    reasoning?: string; // explicação para o usuário
+  };
+}
+
+// Configuração do Email Agent
+export interface EmailAgentSettings {
+  enabled: boolean;
+  intervalMinutes: number;
+  maxEmailsPerRun: number;
+  processContracts: boolean;
+  unreadOnly: boolean;
+  customRules: ClassificationRule[];
+}
+
+// Configuração do Legal Agent
+export interface LegalAgentSettings {
+  enabled: boolean;
+  autoAnalyze: boolean;
+  maxDocumentSizeMB: number;
+  contractKeywords: string[];
+  highRiskKeywords: string[];
+}
+
 interface AppConfigData {
   anthropic: {
     apiKey: string;
@@ -36,13 +74,18 @@ interface AppConfigData {
     stablecoinCheckInterval: number;
   };
   stablecoin: {
+    checkInterval: number;
     thresholds: {
       largeMint: number;
       largeBurn: number;
       largeTransfer: number;
       supplyChangePercent: number;
+      frequencyPerHour: number;
     };
   };
+  // Novas configurações de agentes
+  emailAgent: EmailAgentSettings;
+  legalAgent: LegalAgentSettings;
 }
 
 // Carrega config do banco ou das env vars
@@ -74,12 +117,82 @@ async function loadConfig(): Promise<AppConfigData> {
       stablecoinCheckInterval: parseInt(process.env.STABLECOIN_CHECK_INTERVAL || '60'),
     },
     stablecoin: {
+      checkInterval: 60,
       thresholds: {
         largeMint: 10000000,
         largeBurn: 10000000,
         largeTransfer: 50000000,
         supplyChangePercent: 1,
+        frequencyPerHour: 100,
       },
+    },
+    emailAgent: {
+      enabled: true,
+      intervalMinutes: 10,
+      maxEmailsPerRun: 50,
+      processContracts: true,
+      unreadOnly: true,
+      customRules: [
+        // Regras padrão de exemplo
+        {
+          id: 'atraso-critico',
+          name: 'Emails sobre atraso são críticos',
+          enabled: true,
+          condition: {
+            field: 'all',
+            operator: 'contains',
+            value: 'atraso',
+            caseSensitive: false,
+          },
+          action: {
+            priority: 'urgent',
+            tags: ['atraso', 'crítico'],
+            requiresAction: true,
+            reasoning: 'Email menciona atraso - requer atenção imediata',
+          },
+        },
+        {
+          id: 'pagamento-urgente',
+          name: 'Pagamentos pendentes são urgentes',
+          enabled: true,
+          condition: {
+            field: 'all',
+            operator: 'contains',
+            value: 'pagamento pendente',
+            caseSensitive: false,
+          },
+          action: {
+            priority: 'urgent',
+            tags: ['pagamento', 'pendente'],
+            requiresAction: true,
+            reasoning: 'Pagamento pendente requer ação',
+          },
+        },
+        {
+          id: 'vencimento-atencao',
+          name: 'Vencimentos requerem atenção',
+          enabled: true,
+          condition: {
+            field: 'all',
+            operator: 'contains',
+            value: 'vencimento',
+            caseSensitive: false,
+          },
+          action: {
+            priority: 'attention',
+            tags: ['vencimento'],
+            requiresAction: true,
+            reasoning: 'Email menciona vencimento',
+          },
+        },
+      ],
+    },
+    legalAgent: {
+      enabled: true,
+      autoAnalyze: true,
+      maxDocumentSizeMB: 10,
+      contractKeywords: ['contrato', 'acordo', 'termo', 'aditivo', 'procuração', 'minuta', 'proposta'],
+      highRiskKeywords: ['penalidade', 'multa', 'rescisão', 'indenização', 'exclusividade', 'não concorrência'],
     },
   };
 
@@ -129,11 +242,15 @@ async function loadConfig(): Promise<AppConfigData> {
           ? parseInt(configMap.get('settings.stablecoinCheckInterval')!) 
           : defaults.settings.stablecoinCheckInterval,
       },
-      stablecoin: {
-        thresholds: configMap.get('stablecoin.thresholds') 
-          ? JSON.parse(configMap.get('stablecoin.thresholds')!) 
-          : defaults.stablecoin.thresholds,
-      },
+      stablecoin: configMap.get('stablecoin') 
+        ? JSON.parse(configMap.get('stablecoin')!) 
+        : defaults.stablecoin,
+      emailAgent: configMap.get('emailAgent') 
+        ? JSON.parse(configMap.get('emailAgent')!) 
+        : defaults.emailAgent,
+      legalAgent: configMap.get('legalAgent') 
+        ? JSON.parse(configMap.get('legalAgent')!) 
+        : defaults.legalAgent,
     };
   } catch (error) {
     console.error('[Config] Erro ao carregar do banco:', error);
@@ -409,6 +526,173 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
       return { success: false, error: error instanceof Error ? error.message : 'Erro de conexão' };
     }
   });
+
+  // ===========================================
+  // Configurações de Agentes
+  // ===========================================
+
+  // Obtém configurações de todos os agentes
+  app.get('/agents', async () => {
+    const config = await loadConfig();
+    return {
+      emailAgent: config.emailAgent,
+      legalAgent: config.legalAgent,
+    };
+  });
+
+  // Atualiza configuração do Email Agent
+  app.put<{ Body: Partial<EmailAgentSettings> }>('/agents/email', async (request, reply) => {
+    try {
+      const config = await loadConfig();
+      const updated: EmailAgentSettings = {
+        ...config.emailAgent,
+        ...request.body,
+      };
+      
+      await saveConfigValue('emailAgent', JSON.stringify(updated));
+      
+      console.log('[Config] Email Agent atualizado:', {
+        interval: updated.intervalMinutes,
+        rules: updated.customRules?.length || 0,
+      });
+      
+      return { 
+        success: true, 
+        message: 'Configuração do Email Agent salva',
+        config: updated,
+      };
+    } catch (error) {
+      console.error('[Config] Erro ao salvar Email Agent:', error);
+      return reply.status(500).send({ 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Erro ao salvar' 
+      });
+    }
+  });
+
+  // Atualiza configuração do Legal Agent
+  app.put<{ Body: Partial<LegalAgentSettings> }>('/agents/legal', async (request, reply) => {
+    try {
+      const config = await loadConfig();
+      const updated: LegalAgentSettings = {
+        ...config.legalAgent,
+        ...request.body,
+      };
+      
+      await saveConfigValue('legalAgent', JSON.stringify(updated));
+      
+      console.log('[Config] Legal Agent atualizado:', {
+        autoAnalyze: updated.autoAnalyze,
+        keywords: updated.contractKeywords?.length || 0,
+      });
+      
+      return { 
+        success: true, 
+        message: 'Configuração do Legal Agent salva',
+        config: updated,
+      };
+    } catch (error) {
+      console.error('[Config] Erro ao salvar Legal Agent:', error);
+      return reply.status(500).send({ 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Erro ao salvar' 
+      });
+    }
+  });
+
+  // Adiciona uma regra de classificação ao Email Agent
+  app.post<{ Body: ClassificationRule }>('/agents/email/rules', async (request, reply) => {
+    try {
+      const config = await loadConfig();
+      const newRule = {
+        ...request.body,
+        id: request.body.id || `rule-${Date.now()}`,
+      };
+      
+      const updated: EmailAgentSettings = {
+        ...config.emailAgent,
+        customRules: [...(config.emailAgent.customRules || []), newRule],
+      };
+      
+      await saveConfigValue('emailAgent', JSON.stringify(updated));
+      
+      return { 
+        success: true, 
+        message: 'Regra adicionada com sucesso',
+        rule: newRule,
+      };
+    } catch (error) {
+      console.error('[Config] Erro ao adicionar regra:', error);
+      return reply.status(500).send({ 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Erro ao adicionar regra' 
+      });
+    }
+  });
+
+  // Remove uma regra de classificação
+  app.delete<{ Params: { ruleId: string } }>('/agents/email/rules/:ruleId', async (request, reply) => {
+    try {
+      const config = await loadConfig();
+      const updated: EmailAgentSettings = {
+        ...config.emailAgent,
+        customRules: (config.emailAgent.customRules || []).filter(r => r.id !== request.params.ruleId),
+      };
+      
+      await saveConfigValue('emailAgent', JSON.stringify(updated));
+      
+      return { 
+        success: true, 
+        message: 'Regra removida com sucesso',
+      };
+    } catch (error) {
+      console.error('[Config] Erro ao remover regra:', error);
+      return reply.status(500).send({ 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Erro ao remover regra' 
+      });
+    }
+  });
+
+  // Atualiza uma regra específica
+  app.put<{ Params: { ruleId: string }; Body: Partial<ClassificationRule> }>(
+    '/agents/email/rules/:ruleId', 
+    async (request, reply) => {
+      try {
+        const config = await loadConfig();
+        const ruleIndex = (config.emailAgent.customRules || []).findIndex(r => r.id === request.params.ruleId);
+        
+        if (ruleIndex === -1) {
+          return reply.status(404).send({ success: false, error: 'Regra não encontrada' });
+        }
+        
+        const updatedRules = [...(config.emailAgent.customRules || [])];
+        updatedRules[ruleIndex] = {
+          ...updatedRules[ruleIndex],
+          ...request.body,
+        };
+        
+        const updated: EmailAgentSettings = {
+          ...config.emailAgent,
+          customRules: updatedRules,
+        };
+        
+        await saveConfigValue('emailAgent', JSON.stringify(updated));
+        
+        return { 
+          success: true, 
+          message: 'Regra atualizada com sucesso',
+          rule: updatedRules[ruleIndex],
+        };
+      } catch (error) {
+        console.error('[Config] Erro ao atualizar regra:', error);
+        return reply.status(500).send({ 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Erro ao atualizar regra' 
+        });
+      }
+    }
+  );
 };
 
 export { loadConfig };

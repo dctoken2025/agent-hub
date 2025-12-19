@@ -13,6 +13,7 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   ArrowRightCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { apiRequest } from '@/lib/utils';
 
@@ -166,6 +167,17 @@ export function StablecoinMonitor() {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
+  const getExplorerUrl = (network: string, txHash: string) => {
+    const explorers: Record<string, string> = {
+      ethereum: 'https://etherscan.io/tx/',
+      polygon: 'https://polygonscan.com/tx/',
+      arbitrum: 'https://arbiscan.io/tx/',
+      optimism: 'https://optimistic.etherscan.io/tx/',
+      base: 'https://basescan.org/tx/',
+    };
+    return `${explorers[network] || explorers.ethereum}${txHash}`;
+  };
+
   const getEventIcon = (type: string) => {
     switch (type) {
       case 'mint': return <ArrowUpCircle className="h-4 w-4 text-green-500" />;
@@ -192,15 +204,28 @@ export function StablecoinMonitor() {
     }
   };
 
-  const formatSupply = (supply: string | null) => {
+  const formatSupply = (supply: string | null, decimals: number = 18) => {
     if (!supply) return '-';
-    const num = BigInt(supply);
-    const billions = Number(num / BigInt(10 ** 6)) / 1000; // Assumindo 6 decimais
-    if (billions >= 1) {
-      return `$${billions.toFixed(1)}B`;
+    try {
+      const num = BigInt(supply);
+      // Converte para número com decimais
+      const divisor = BigInt(10 ** decimals);
+      const integerPart = num / divisor;
+      const value = Number(integerPart) + Number(num % divisor) / Number(divisor);
+      
+      // Formata de acordo com a magnitude
+      if (value >= 1_000_000_000) {
+        return `R$ ${(value / 1_000_000_000).toFixed(2)}B`;
+      } else if (value >= 1_000_000) {
+        return `R$ ${(value / 1_000_000).toFixed(2)}M`;
+      } else if (value >= 1_000) {
+        return `R$ ${(value / 1_000).toFixed(2)}K`;
+      } else {
+        return `R$ ${value.toFixed(2)}`;
+      }
+    } catch {
+      return '-';
     }
-    const millions = Number(num / BigInt(10 ** 6));
-    return `$${millions.toFixed(1)}M`;
   };
 
   return (
@@ -315,6 +340,9 @@ export function StablecoinMonitor() {
                 {addMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Salvar'}
               </button>
             </div>
+            {addError && (
+              <p className="mt-2 text-sm text-red-500">{addError}</p>
+            )}
           </div>
         )}
 
@@ -343,7 +371,7 @@ export function StablecoinMonitor() {
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="text-right">
-                      <p className="font-medium">{formatSupply(stablecoin.lastSupply)}</p>
+                      <p className="font-medium">{formatSupply(stablecoin.lastSupply, stablecoin.decimals)}</p>
                       <p className="text-xs text-muted-foreground">
                         Atualizado {formatTimeAgo(stablecoin.lastCheckedAt)}
                       </p>
@@ -396,8 +424,18 @@ export function StablecoinMonitor() {
                           <span className="px-1.5 py-0.5 text-xs bg-orange-500 text-white rounded">ANOMALIA</span>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {event.amountFormatted} · {truncateAddress(event.txHash)}
+                      <p className="text-sm text-muted-foreground truncate flex items-center gap-1">
+                        {event.amountFormatted} · 
+                        <a
+                          href={getExplorerUrl(event.stablecoin?.network || 'ethereum', event.txHash)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {truncateAddress(event.txHash)}
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
                       </p>
                     </div>
                     <div className="text-right text-sm text-muted-foreground">
@@ -461,3 +499,4 @@ export function StablecoinMonitor() {
     </div>
   );
 }
+

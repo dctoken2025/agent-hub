@@ -392,3 +392,4 @@ export class StablecoinAgent extends Agent<void, StablecoinAgentResult> {
     };
   }
 }
+

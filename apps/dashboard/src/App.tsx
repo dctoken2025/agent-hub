@@ -8,6 +8,7 @@ import { Logs } from './pages/Logs';
 import { LegalAnalyses } from './pages/LegalAnalyses';
 import { StablecoinMonitor } from './pages/StablecoinMonitor';
 import { Settings } from './pages/Settings';
+import AgentConfig from './pages/AgentConfig';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="/" component={Dashboard} />
           <Route path="/emails" component={Emails} />
           <Route path="/agents" component={Agents} />
+          <Route path="/agent-config" component={AgentConfig} />
           <Route path="/logs" component={Logs} />
           <Route path="/legal" component={LegalAnalyses} />
           <Route path="/stablecoins" component={StablecoinMonitor} />

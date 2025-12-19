@@ -1,7 +1,7 @@
 import { Agent, type AgentConfig, type AgentResult, Notifier } from '@agent-hub/core';
 import { LegalAgent, type LegalAgentConfig, type ContractAnalysis } from '@agent-hub/legal-agent';
 import { GmailClient } from './gmail-client.js';
-import { EmailClassifier } from './email-classifier.js';
+import { EmailClassifier, type ClassificationRule } from './email-classifier.js';
 import type { Email, EmailAgentConfig, ClassifiedEmail, EmailPriority } from './types.js';
 
 export interface EmailAgentResult {
@@ -73,6 +73,14 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
     );
 
     console.log('[EmailAgent] Legal Agent integrado');
+  }
+
+  /**
+   * Define regras de classificação personalizadas.
+   */
+  setCustomRules(rules: ClassificationRule[]): void {
+    this.classifier.setCustomRules(rules);
+    console.log(`[EmailAgent] ${rules.length} regras personalizadas carregadas`);
   }
 
   async initialize(): Promise<void> {

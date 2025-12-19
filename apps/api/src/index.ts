@@ -100,19 +100,25 @@ async function initializeEmailAgent() {
         enabled: true,
         schedule: {
           type: 'interval',
-          value: config.settings.emailCheckInterval,
+          value: config.emailAgent?.intervalMinutes || config.settings.emailCheckInterval,
         },
       },
       emailConfig,
       notifier
     );
 
+    // Aplica regras personalizadas se existirem
+    if (config.emailAgent?.customRules?.length > 0) {
+      emailAgent.setCustomRules(config.emailAgent.customRules);
+      console.log(`📋 ${config.emailAgent.customRules.length} regras personalizadas carregadas`);
+    }
+
     const scheduler = getScheduler();
     scheduler.register(emailAgent);
 
     console.log('📧 Email Agent registrado');
     console.log(`   📬 Email: ${config.user.email}`);
-    console.log(`   ⏱️  Intervalo: ${config.settings.emailCheckInterval} minutos`);
+    console.log(`   ⏱️  Intervalo: ${config.emailAgent?.intervalMinutes || config.settings.emailCheckInterval} minutos`);
     console.log(`   ⭐ VIPs: ${config.user.vipSenders.length} configurados`);
 
     return emailAgent;
@@ -217,6 +223,7 @@ async function initializeStablecoinAgent() {
     const activeStablecoins = await db.select().from(stablecoins).where(eq(stablecoins.isActive, true));
     
     const stablecoinConfigs = activeStablecoins.map(s => ({
+      id: s.id,
       address: s.address,
       name: s.name,
       symbol: s.symbol,
@@ -262,7 +269,7 @@ async function initializeStablecoinAgent() {
     stablecoinAgent.onEventDetected = async (event) => {
       try {
         const stablecoin = activeStablecoins.find(
-          s => s.address.toLowerCase() === event.stablecoinAddress.toLowerCase()
+          s => s.address.toLowerCase() === event.stablecoin.address.toLowerCase()
         );
         if (!stablecoin) return;
 
@@ -271,13 +278,13 @@ async function initializeStablecoinAgent() {
           txHash: event.txHash,
           blockNumber: event.blockNumber,
           logIndex: event.logIndex,
-          eventType: event.type,
+          eventType: event.eventType,
           fromAddress: event.from,
           toAddress: event.to,
-          amount: event.amount,
+          amount: event.amount.toString(),
           amountFormatted: event.amountFormatted,
           isAnomaly: false,
-          timestamp: new Date(event.timestamp),
+          timestamp: event.timestamp,
         });
       } catch (err) {
         console.error('[StablecoinAgent] Erro ao salvar evento:', err);
@@ -286,9 +293,10 @@ async function initializeStablecoinAgent() {
 
     stablecoinAgent.onAnomalyDetected = async (alert) => {
       try {
-        const stablecoin = activeStablecoins.find(
-          s => s.address.toLowerCase() === alert.stablecoinAddress.toLowerCase()
-        );
+        // Tenta encontrar o stablecoin pelo evento associado
+        const stablecoin = alert.event 
+          ? activeStablecoins.find(s => s.address.toLowerCase() === alert.event!.stablecoin.address.toLowerCase())
+          : null;
         
         await db.insert(stablecoinAnomalies).values({
           stablecoinId: stablecoin?.id || null,
@@ -307,21 +315,20 @@ async function initializeStablecoinAgent() {
 
     stablecoinAgent.onSupplySnapshot = async (snapshot) => {
       try {
-        const stablecoin = activeStablecoins.find(
-          s => s.address.toLowerCase() === snapshot.stablecoinAddress.toLowerCase()
-        );
+        // Usa o stablecoinId diretamente do snapshot
+        const stablecoin = activeStablecoins.find(s => s.id === snapshot.stablecoinId);
         if (!stablecoin) return;
 
         await db.insert(supplySnapshots).values({
           stablecoinId: stablecoin.id,
-          supply: snapshot.supply,
+          supply: snapshot.supply.toString(),
           supplyFormatted: snapshot.supplyFormatted,
           blockNumber: snapshot.blockNumber,
           changePercent: snapshot.changePercent?.toString(),
         });
 
         await db.update(stablecoins)
-          .set({ lastSupply: snapshot.supply, lastCheckedAt: new Date() })
+          .set({ lastSupply: snapshot.supply.toString(), lastCheckedAt: new Date() })
           .where(eq(stablecoins.id, stablecoin.id));
       } catch (err) {
         console.error('[StablecoinAgent] Erro ao salvar snapshot:', err);

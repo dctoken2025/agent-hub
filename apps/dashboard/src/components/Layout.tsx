@@ -8,7 +8,8 @@ import {
   X,
   Activity,
   Scale,
-  Coins
+  Coins,
+  Sliders
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -19,6 +20,7 @@ const navigation = [
   { name: 'Análises Jurídicas', href: '/legal', icon: Scale },
   { name: 'Stablecoins', href: '/stablecoins', icon: Coins },
   { name: 'Agentes', href: '/agents', icon: Bot },
+  { name: 'Config. Agentes', href: '/agent-config', icon: Sliders },
   { name: 'Logs', href: '/logs', icon: Activity },
   { name: 'Configurações', href: '/settings', icon: Settings },
 ];

@@ -2,21 +2,56 @@ import { getAIClient, type AITool } from '@agent-hub/core';
 import type { Email, EmailClassification, EmailAgentConfig } from './types.js';
 import { EmailClassificationSchema } from './types.js';
 
+// Regra de classificação personalizada
+export interface ClassificationRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  condition: {
+    field: 'subject' | 'body' | 'from' | 'all';
+    operator: 'contains' | 'startsWith' | 'endsWith' | 'equals' | 'regex';
+    value: string;
+    caseSensitive?: boolean;
+  };
+  action: {
+    priority: 'urgent' | 'attention' | 'informative' | 'low' | 'cc_only';
+    tags?: string[];
+    requiresAction?: boolean;
+    reasoning?: string;
+  };
+}
+
 /**
  * Classificador de emails usando Claude AI.
  * Analisa conteúdo, tom e contexto para determinar prioridade.
  */
 export class EmailClassifier {
   private config: EmailAgentConfig;
+  private customRules: ClassificationRule[] = [];
 
   constructor(config: EmailAgentConfig) {
     this.config = config;
   }
 
   /**
+   * Define regras de classificação personalizadas.
+   */
+  setCustomRules(rules: ClassificationRule[]): void {
+    this.customRules = rules.filter(r => r.enabled);
+    console.log(`[EmailClassifier] ${this.customRules.length} regras personalizadas ativas`);
+  }
+
+  /**
    * Classifica um email usando IA.
    */
   async classify(email: Email): Promise<EmailClassification> {
+    // Primeiro: verificar regras personalizadas do usuário
+    const customRuleMatch = this.applyCustomRules(email);
+    if (customRuleMatch) {
+      console.log(`[EmailClassifier] Regra personalizada aplicada: ${customRuleMatch.reasoning}`);
+      return customRuleMatch;
+    }
+
     // Verificações rápidas antes de usar IA
     const quickCheck = this.quickClassify(email);
     if (quickCheck) {
@@ -40,6 +75,89 @@ export class EmailClassifier {
 
     // Fallback se IA falhar
     return this.defaultClassification(email);
+  }
+
+  /**
+   * Aplica regras de classificação personalizadas do usuário.
+   */
+  private applyCustomRules(email: Email): EmailClassification | null {
+    if (this.customRules.length === 0) return null;
+
+    const fromEmail = email.from.email.toLowerCase();
+    const subject = email.subject.toLowerCase();
+    const body = email.body.toLowerCase();
+
+    for (const rule of this.customRules) {
+      let textToCheck: string;
+      
+      switch (rule.condition.field) {
+        case 'subject':
+          textToCheck = subject;
+          break;
+        case 'body':
+          textToCheck = body;
+          break;
+        case 'from':
+          textToCheck = fromEmail;
+          break;
+        case 'all':
+        default:
+          textToCheck = `${subject} ${body} ${fromEmail}`;
+      }
+
+      const searchValue = rule.condition.caseSensitive 
+        ? rule.condition.value 
+        : rule.condition.value.toLowerCase();
+      
+      let matches = false;
+
+      switch (rule.condition.operator) {
+        case 'contains':
+          matches = textToCheck.includes(searchValue);
+          break;
+        case 'startsWith':
+          matches = textToCheck.startsWith(searchValue);
+          break;
+        case 'endsWith':
+          matches = textToCheck.endsWith(searchValue);
+          break;
+        case 'equals':
+          matches = textToCheck === searchValue;
+          break;
+        case 'regex':
+          try {
+            const regex = new RegExp(rule.condition.value, rule.condition.caseSensitive ? '' : 'i');
+            matches = regex.test(textToCheck);
+          } catch {
+            console.warn(`[EmailClassifier] Regex inválida na regra ${rule.id}: ${rule.condition.value}`);
+          }
+          break;
+      }
+
+      if (matches) {
+        // Mapear prioridade para action
+        const actionMap: Record<string, EmailClassification['action']> = {
+          urgent: 'respond_now',
+          attention: 'respond_later',
+          informative: 'read_only',
+          low: 'mark_read',
+          cc_only: 'read_only',
+        };
+
+        return {
+          priority: rule.action.priority,
+          action: actionMap[rule.action.priority] || 'read_only',
+          confidence: 95,
+          reasoning: rule.action.reasoning || `Regra personalizada: ${rule.name}`,
+          tags: rule.action.tags || [],
+          sentiment: 'neutral',
+          isDirectedToMe: true,
+          requiresAction: rule.action.requiresAction ?? (rule.action.priority === 'urgent'),
+        };
+      }
+    }
+
+    return null;
   }
 
   /**
