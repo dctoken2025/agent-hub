@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { getScheduler } from '@agent-hub/core';
 import { getDb, agentLogs } from '../db/index.js';
 import { eq, desc, sql } from 'drizzle-orm';
+import { loadConfig } from './config.js';
 
 export const agentRoutes: FastifyPluginAsync = async (app) => {
   const scheduler = getScheduler();
@@ -10,6 +11,9 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async () => {
     const agents = scheduler.getAgents();
     const db = getDb();
+    
+    // Carrega configurações do banco para ter os valores mais atuais
+    const savedConfig = await loadConfig();
     
     // Se tiver banco, busca métricas persistidas
     if (db) {
@@ -56,8 +60,23 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
               dbLastRun = lastRunResult[0]?.createdAt || null;
             }
 
+            // Pega o intervalo da configuração salva no banco (mais atual)
+            let savedInterval = agent.config.schedule?.value;
+            if (agent.config.id === 'email-agent' && savedConfig.emailAgent?.intervalMinutes) {
+              savedInterval = savedConfig.emailAgent.intervalMinutes;
+            } else if (agent.config.id === 'stablecoin-agent' && savedConfig.stablecoin?.checkInterval) {
+              savedInterval = savedConfig.stablecoin.checkInterval;
+            }
+
             return {
               ...agent,
+              config: {
+                ...agent.config,
+                schedule: agent.config.schedule ? {
+                  ...agent.config.schedule,
+                  value: savedInterval,
+                } : undefined,
+              },
               // Usa o maior entre memória e banco (pois podem estar dessincronizados)
               runCount: Math.max(agent.runCount, dbRunCount),
               lastRun: dbLastRun || agent.lastRun,
