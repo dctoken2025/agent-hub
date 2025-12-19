@@ -537,6 +537,11 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
     return {
       emailAgent: config.emailAgent,
       legalAgent: config.legalAgent,
+      stablecoinAgent: {
+        enabled: true,
+        checkInterval: config.stablecoin.checkInterval,
+        thresholds: config.stablecoin.thresholds,
+      },
     };
   });
 
@@ -569,6 +574,42 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
       });
     }
   });
+
+  // Atualiza configuração do Stablecoin Agent
+  app.put<{ Body: { enabled?: boolean; checkInterval?: number; thresholds?: Record<string, number> } }>(
+    '/agents/stablecoin', 
+    async (request, reply) => {
+      try {
+        const config = await loadConfig();
+        const updated = {
+          checkInterval: request.body.checkInterval ?? config.stablecoin.checkInterval,
+          thresholds: {
+            ...config.stablecoin.thresholds,
+            ...(request.body.thresholds || {}),
+          },
+        };
+        
+        await saveConfigValue('stablecoin', JSON.stringify(updated));
+        
+        console.log('[Config] Stablecoin Agent atualizado:', {
+          interval: updated.checkInterval,
+          thresholds: updated.thresholds,
+        });
+        
+        return { 
+          success: true, 
+          message: 'Configuração do Stablecoin Agent salva',
+          config: { enabled: request.body.enabled ?? true, ...updated },
+        };
+      } catch (error) {
+        console.error('[Config] Erro ao salvar Stablecoin Agent:', error);
+        return reply.status(500).send({ 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Erro ao salvar' 
+        });
+      }
+    }
+  );
 
   // Atualiza configuração do Legal Agent
   app.put<{ Body: Partial<LegalAgentSettings> }>('/agents/legal', async (request, reply) => {

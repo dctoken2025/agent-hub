@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Settings, Mail, Scale, Plus, Trash2, Save, 
   Clock, Zap, AlertTriangle, CheckCircle, Edit2, X,
-  ChevronDown, ChevronUp, ToggleLeft, ToggleRight
+  ChevronDown, ChevronUp, ToggleLeft, ToggleRight, Coins
 } from 'lucide-react';
 import { useDialog } from '../components/Dialog';
 
@@ -44,9 +44,22 @@ interface LegalAgentSettings {
   highRiskKeywords: string[];
 }
 
+interface StablecoinAgentSettings {
+  enabled: boolean;
+  checkInterval: number;
+  thresholds: {
+    largeMint: number;
+    largeBurn: number;
+    largeTransfer: number;
+    supplyChangePercent: number;
+    frequencyPerHour: number;
+  };
+}
+
 interface AgentConfigResponse {
   emailAgent: EmailAgentSettings;
   legalAgent: LegalAgentSettings;
+  stablecoinAgent: StablecoinAgentSettings;
 }
 
 async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
@@ -84,7 +97,7 @@ const operatorLabels = {
 export default function AgentConfig() {
   const queryClient = useQueryClient();
   const dialog = useDialog();
-  const [expandedSection, setExpandedSection] = useState<'email' | 'legal' | null>('email');
+  const [expandedSection, setExpandedSection] = useState<'email' | 'legal' | 'stablecoin' | null>('email');
   const [editingRule, setEditingRule] = useState<ClassificationRule | null>(null);
   const [showNewRule, setShowNewRule] = useState(false);
 
@@ -115,6 +128,19 @@ export default function AgentConfig() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
       dialog.success('Configurações do Legal Agent salvas!');
+    },
+    onError: (error: Error) => dialog.error(error.message),
+  });
+
+  const updateStablecoinAgent = useMutation({
+    mutationFn: (settings: Partial<StablecoinAgentSettings>) =>
+      apiRequest('/config/agents/stablecoin', {
+        method: 'PUT',
+        body: JSON.stringify(settings),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
+      dialog.success('Configurações do Stablecoin Agent salvas!');
     },
     onError: (error: Error) => dialog.error(error.message),
   });
@@ -437,6 +463,149 @@ export default function AgentConfig() {
                 className="w-full px-3 py-2 border rounded-lg bg-background h-24 font-mono text-sm"
                 placeholder="penalidade&#10;multa&#10;rescisão"
               />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Stablecoin Agent Config */}
+      <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
+        <button
+          onClick={() => setExpandedSection(expandedSection === 'stablecoin' ? null : 'stablecoin')}
+          className="w-full p-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-amber-100 dark:bg-amber-900 rounded-lg">
+              <Coins className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="text-left">
+              <h3 className="font-semibold">Stablecoin Agent</h3>
+              <p className="text-sm text-muted-foreground">
+                Monitoramento de stablecoins na blockchain
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`px-2 py-1 rounded text-xs font-medium ${data?.stablecoinAgent?.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+              {data?.stablecoinAgent?.enabled ? 'Ativo' : 'Inativo'}
+            </span>
+            {expandedSection === 'stablecoin' ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+          </div>
+        </button>
+
+        {expandedSection === 'stablecoin' && data?.stablecoinAgent && (
+          <div className="p-4 border-t space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-1">
+                  <Clock className="h-4 w-4" /> Intervalo (min)
+                </label>
+                <input
+                  type="number"
+                  value={data.stablecoinAgent.checkInterval}
+                  onChange={(e) => updateStablecoinAgent.mutate({ checkInterval: parseInt(e.target.value) || 60 })}
+                  className="w-full px-3 py-2 border rounded-lg bg-background"
+                  min={1}
+                  max={1440}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Agente ativo</label>
+                <button
+                  onClick={() => updateStablecoinAgent.mutate({ enabled: !data.stablecoinAgent.enabled })}
+                  className={`w-full px-3 py-2 border rounded-lg flex items-center justify-center gap-2 transition-colors ${
+                    data.stablecoinAgent.enabled ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {data.stablecoinAgent.enabled ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                  {data.stablecoinAgent.enabled ? 'Sim' : 'Não'}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-medium mb-3 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                Limites de Alerta
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Mint grande (USD)</label>
+                  <input
+                    type="number"
+                    value={data.stablecoinAgent.thresholds?.largeMint || 10000000}
+                    onChange={(e) => updateStablecoinAgent.mutate({ 
+                      thresholds: { 
+                        ...data.stablecoinAgent.thresholds, 
+                        largeMint: parseInt(e.target.value) || 10000000 
+                      } 
+                    })}
+                    className="w-full px-3 py-2 border rounded-lg bg-background"
+                    min={1000}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Burn grande (USD)</label>
+                  <input
+                    type="number"
+                    value={data.stablecoinAgent.thresholds?.largeBurn || 10000000}
+                    onChange={(e) => updateStablecoinAgent.mutate({ 
+                      thresholds: { 
+                        ...data.stablecoinAgent.thresholds, 
+                        largeBurn: parseInt(e.target.value) || 10000000 
+                      } 
+                    })}
+                    className="w-full px-3 py-2 border rounded-lg bg-background"
+                    min={1000}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Transfer grande (USD)</label>
+                  <input
+                    type="number"
+                    value={data.stablecoinAgent.thresholds?.largeTransfer || 50000000}
+                    onChange={(e) => updateStablecoinAgent.mutate({ 
+                      thresholds: { 
+                        ...data.stablecoinAgent.thresholds, 
+                        largeTransfer: parseInt(e.target.value) || 50000000 
+                      } 
+                    })}
+                    className="w-full px-3 py-2 border rounded-lg bg-background"
+                    min={1000}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Mudança supply (%)</label>
+                  <input
+                    type="number"
+                    value={data.stablecoinAgent.thresholds?.supplyChangePercent || 1}
+                    onChange={(e) => updateStablecoinAgent.mutate({ 
+                      thresholds: { 
+                        ...data.stablecoinAgent.thresholds, 
+                        supplyChangePercent: parseFloat(e.target.value) || 1 
+                      } 
+                    })}
+                    className="w-full px-3 py-2 border rounded-lg bg-background"
+                    min={0.1}
+                    step={0.1}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Frequência/hora</label>
+                  <input
+                    type="number"
+                    value={data.stablecoinAgent.thresholds?.frequencyPerHour || 100}
+                    onChange={(e) => updateStablecoinAgent.mutate({ 
+                      thresholds: { 
+                        ...data.stablecoinAgent.thresholds, 
+                        frequencyPerHour: parseInt(e.target.value) || 100 
+                      } 
+                    })}
+                    className="w-full px-3 py-2 border rounded-lg bg-background"
+                    min={1}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         )}

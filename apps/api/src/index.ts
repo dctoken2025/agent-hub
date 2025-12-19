@@ -385,6 +385,12 @@ async function main() {
     await initializeLegalAgent();
     await initializeStablecoinAgent();
     
+    // Inicia todos os agentes automaticamente
+    const scheduler = getScheduler();
+    console.log('\n🚀 Iniciando execução automática dos agentes...');
+    await scheduler.startAll();
+    console.log('✅ Todos os agentes foram iniciados!\n');
+    
   } catch (err) {
     app.log.error(err);
     process.exit(1);
