@@ -29,6 +29,12 @@ export interface EmailAgentSettings {
   processContracts: boolean;
   unreadOnly: boolean;
   customRules: ClassificationRule[];
+  // Data base para começar a buscar emails (ISO string)
+  // Se não definida, busca todos os emails
+  startDate?: string;
+  // Última data/hora que o agente processou (ISO string)
+  // Usado para buscar apenas emails novos a partir desta data
+  lastProcessedAt?: string;
 }
 
 // Configuração do Legal Agent
@@ -132,6 +138,8 @@ async function loadConfig(): Promise<AppConfigData> {
       maxEmailsPerRun: 50,
       processContracts: true,
       unreadOnly: true,
+      startDate: undefined, // Se undefined, busca desde sempre
+      lastProcessedAt: undefined, // Atualizado automaticamente após cada execução
       customRules: [
         // Regras padrão de exemplo
         {
@@ -259,7 +267,7 @@ async function loadConfig(): Promise<AppConfigData> {
 }
 
 // Salva uma config no banco
-async function saveConfigValue(key: string, value: string, isSecret = false): Promise<void> {
+export async function saveConfigValue(key: string, value: string, isSecret = false): Promise<void> {
   const db = getDb();
   if (!db) {
     console.warn('[Config] Banco não disponível, salvando apenas em env');

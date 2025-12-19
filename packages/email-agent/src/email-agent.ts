@@ -97,6 +97,9 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
   // Set para rastrear emails já processados nesta sessão
   private processedEmailIds: Set<string> = new Set();
 
+  // Callback para atualizar lastProcessedAt no banco
+  public onProcessingComplete?: (lastProcessedAt: Date) => Promise<void>;
+
   async execute(): Promise<AgentResult<EmailAgentResult>> {
     const startTime = Date.now();
     
@@ -110,6 +113,20 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
       // Usa -label: para excluir emails já processados
       let query = this.emailConfig.unreadOnly ? 'is:unread' : '';
       query += ` -label:${PROCESSED_LABEL_NAME}`;
+      
+      // Adiciona filtro de data - busca apenas emails após a data mais recente entre:
+      // 1. lastProcessedAt (última execução do agente)
+      // 2. startDate (data base configurada pelo usuário)
+      const filterDate = this.getFilterDate();
+      if (filterDate) {
+        // Gmail usa formato YYYY/MM/DD para query after:
+        const year = filterDate.getFullYear();
+        const month = String(filterDate.getMonth() + 1).padStart(2, '0');
+        const day = String(filterDate.getDate()).padStart(2, '0');
+        query += ` after:${year}/${month}/${day}`;
+        console.log(`[EmailAgent] 📅 Buscando emails após: ${filterDate.toISOString()}`);
+      }
+      
       query = query.trim();
       const allEmails: Email[] = [];
       let pageToken: string | undefined;
@@ -222,6 +239,14 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
         legalAnalyses,
       };
 
+      // Atualiza lastProcessedAt com a data/hora atual (timezone Brasil)
+      // Isso garante que na próxima execução só buscaremos emails novos
+      if (classifiedEmails.length > 0 && this.onProcessingComplete) {
+        const now = new Date();
+        await this.onProcessingComplete(now);
+        console.log(`[EmailAgent] ✅ lastProcessedAt atualizado para: ${now.toISOString()}`);
+      }
+
       return {
         success: true,
         data: result,
@@ -237,6 +262,51 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
         duration: Date.now() - startTime,
       };
     }
+  }
+
+  /**
+   * Retorna a data a partir da qual buscar emails.
+   * Prioriza lastProcessedAt (mais recente), depois startDate.
+   */
+  private getFilterDate(): Date | null {
+    const { lastProcessedAt, startDate } = this.emailConfig;
+    
+    // Converte para Date se for string
+    const lastDate = lastProcessedAt 
+      ? (typeof lastProcessedAt === 'string' ? new Date(lastProcessedAt) : lastProcessedAt)
+      : null;
+    const start = startDate 
+      ? (typeof startDate === 'string' ? new Date(startDate) : startDate)
+      : null;
+    
+    // Se temos lastProcessedAt, usa ele (sempre mais recente)
+    if (lastDate && !isNaN(lastDate.getTime())) {
+      return lastDate;
+    }
+    
+    // Senão, usa startDate se configurado
+    if (start && !isNaN(start.getTime())) {
+      return start;
+    }
+    
+    // Nenhum filtro de data
+    return null;
+  }
+
+  /**
+   * Atualiza a configuração de datas (chamado externamente)
+   */
+  public updateDateConfig(config: { startDate?: string | Date; lastProcessedAt?: string | Date }): void {
+    if (config.startDate !== undefined) {
+      this.emailConfig.startDate = config.startDate;
+    }
+    if (config.lastProcessedAt !== undefined) {
+      this.emailConfig.lastProcessedAt = config.lastProcessedAt;
+    }
+    console.log(`[EmailAgent] Configuração de datas atualizada:`, {
+      startDate: this.emailConfig.startDate,
+      lastProcessedAt: this.emailConfig.lastProcessedAt,
+    });
   }
 
   /**

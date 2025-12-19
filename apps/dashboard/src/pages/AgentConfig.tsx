@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Mail, Scale, Plus, Trash2, Save, 
   Clock, Zap, AlertTriangle, CheckCircle, Edit2, X,
-  ChevronDown, ChevronUp, ToggleLeft, ToggleRight, Coins
+  ChevronDown, ChevronUp, ToggleLeft, ToggleRight, Coins, Calendar
 } from 'lucide-react';
 import { useDialog } from '../components/Dialog';
 
@@ -34,6 +34,8 @@ interface EmailAgentSettings {
   processContracts: boolean;
   unreadOnly: boolean;
   customRules: ClassificationRule[];
+  startDate?: string;
+  lastProcessedAt?: string;
 }
 
 interface LegalAgentSettings {
@@ -329,6 +331,45 @@ export default function AgentConfig() {
                   {emailForm.unreadOnly ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
                   {emailForm.unreadOnly ? 'Sim' : 'Não'}
                 </button>
+              </div>
+            </div>
+
+            {/* Data Base para buscar emails */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-1">
+                  <Calendar className="h-4 w-4" /> Data Base (início da busca)
+                </label>
+                <input
+                  type="date"
+                  value={emailForm.startDate ? emailForm.startDate.split('T')[0] : ''}
+                  onChange={(e) => {
+                    const date = e.target.value ? new Date(e.target.value + 'T00:00:00-03:00').toISOString() : undefined;
+                    setEmailForm({ ...emailForm, startDate: date });
+                    setEmailChanged(true);
+                  }}
+                  className="w-full px-3 py-2 border rounded-lg bg-background"
+                />
+                <p className="text-xs text-muted-foreground">
+                  O agente só buscará emails a partir desta data. Deixe vazio para buscar todos.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-1">
+                  <Clock className="h-4 w-4" /> Última execução
+                </label>
+                <input
+                  type="text"
+                  value={emailForm.lastProcessedAt 
+                    ? new Date(emailForm.lastProcessedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+                    : 'Nunca executado'
+                  }
+                  disabled
+                  className="w-full px-3 py-2 border rounded-lg bg-gray-50 text-gray-500"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Na próxima execução, só buscará emails após esta data/hora.
+                </p>
               </div>
             </div>
 

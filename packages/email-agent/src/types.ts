@@ -81,6 +81,14 @@ export interface EmailAgentConfig {
   // Número máximo de emails para processar por execução
   maxEmailsPerRun: number;
   
+  // Data base para começar a buscar emails (ISO string ou Date)
+  // Se não definida, busca desde sempre
+  startDate?: string | Date;
+  
+  // Última data/hora que o agente processou (ISO string ou Date)
+  // Usado para buscar apenas emails novos a partir desta data
+  lastProcessedAt?: string | Date;
+  
   // Processar apenas não lidos
   unreadOnly: boolean;
 }

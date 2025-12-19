@@ -17,7 +17,7 @@ import { eq } from 'drizzle-orm';
 import { agentRoutes } from './routes/agents.js';
 import { emailRoutes } from './routes/emails.js';
 import { authRoutes } from './routes/auth.js';
-import { configRoutes, loadConfig } from './routes/config.js';
+import { configRoutes, loadConfig, saveConfigValue } from './routes/config.js';
 import { legalRoutes } from './routes/legal.js';
 import { stablecoinRoutes } from './routes/stablecoins.js';
 
@@ -84,8 +84,11 @@ async function initializeEmailAgent() {
       vipSenders: config.user.vipSenders,
       ignoreSenders: config.user.ignoreSenders,
       labelsToProcess: ['INBOX'],
-      maxEmailsPerRun: 1500,
+      maxEmailsPerRun: config.emailAgent?.maxEmailsPerRun || 50,
       unreadOnly: true,
+      // Configurações de data para filtrar emails
+      startDate: config.emailAgent?.startDate,
+      lastProcessedAt: config.emailAgent?.lastProcessedAt,
     };
 
     const notifier = config.notifications.slackWebhookUrl
@@ -106,6 +109,31 @@ async function initializeEmailAgent() {
       emailConfig,
       notifier
     );
+
+    // Callback para atualizar lastProcessedAt no banco após cada execução
+    emailAgent.onProcessingComplete = async (lastProcessedAt: Date) => {
+      try {
+        const currentConfig = await loadConfig();
+        const updatedEmailAgent = {
+          ...currentConfig.emailAgent,
+          lastProcessedAt: lastProcessedAt.toISOString(),
+        };
+        await saveConfigValue('emailAgent', JSON.stringify(updatedEmailAgent));
+        
+        // Atualiza a config do agente em memória também
+        emailAgent.updateDateConfig({ lastProcessedAt });
+      } catch (error) {
+        console.error('[EmailAgent] Erro ao salvar lastProcessedAt:', error);
+      }
+    };
+
+    // Log das configurações de data
+    if (config.emailAgent?.startDate) {
+      console.log(`📅 Data base configurada: ${config.emailAgent.startDate}`);
+    }
+    if (config.emailAgent?.lastProcessedAt) {
+      console.log(`📅 Última execução: ${config.emailAgent.lastProcessedAt}`);
+    }
 
     // Aplica regras personalizadas se existirem
     if (config.emailAgent?.customRules?.length > 0) {
