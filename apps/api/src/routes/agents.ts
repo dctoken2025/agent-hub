@@ -279,6 +279,57 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
+    // Task Agent - sempre ativo quando Email Agent está ativo (é chamado internamente)
+    // Conta execuções do banco
+    let taskAgentRunCount = 0;
+    let taskAgentLastRun: string | null = null;
+    
+    if (db) {
+      try {
+        const runCountResult = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(agentLogs)
+          .where(
+            and(
+              eq(agentLogs.userId, userId),
+              eq(agentLogs.agentId, `task-agent-${userId}`)
+            )
+          );
+
+        const lastRunResult = await db
+          .select({ createdAt: agentLogs.createdAt })
+          .from(agentLogs)
+          .where(
+            and(
+              eq(agentLogs.userId, userId),
+              eq(agentLogs.agentId, `task-agent-${userId}`)
+            )
+          )
+          .orderBy(desc(agentLogs.createdAt))
+          .limit(1);
+
+        taskAgentRunCount = Number(runCountResult[0]?.count) || 0;
+        taskAgentLastRun = lastRunResult[0]?.createdAt?.toISOString() || null;
+      } catch {
+        // Ignora erros
+      }
+    }
+
+    agents.push({
+      config: {
+        id: 'task-agent',
+        name: 'Task Agent',
+        description: 'Extrai tarefas e action items de emails importantes',
+        enabled: userConfig.emailAgent.enabled, // Ativo quando Email Agent está ativo
+        schedule: {
+          type: 'manual',
+        },
+      },
+      status: emailAgentRunning ? 'running' : 'stopped', // Roda junto com Email Agent
+      runCount: taskAgentRunCount,
+      lastRun: taskAgentLastRun,
+    });
+
     return { agents };
   });
 
