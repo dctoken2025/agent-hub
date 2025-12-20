@@ -533,6 +533,25 @@ export class AgentManager {
           }
           if (emailData?.actionItems && emailData.actionItems.length > 0) {
             await saveActionItemsToDatabase(emailData.actionItems, userId);
+            
+            // Registra log separado para o Task Agent
+            try {
+              await db.insert(agentLogs).values({
+                userId,
+                agentId: `task-agent-${userId}`,
+                agentName: 'Task Agent',
+                eventType: 'completed',
+                success: true,
+                duration: 0, // Não temos o tempo exato
+                processedCount: emailData.actionItems.length,
+                details: { 
+                  actionItemsExtracted: emailData.actionItems.length,
+                  categories: emailData.actionItems.map((item: { category: string }) => item.category),
+                },
+              });
+            } catch (logError) {
+              console.error('[AgentManager] Erro ao registrar log do Task Agent:', logError);
+            }
           }
         } else if (agentId.includes('legal-agent')) {
           const legalData = data as { 
