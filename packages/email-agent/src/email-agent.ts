@@ -477,11 +477,16 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
 
       // Envia para Financial Agent
       console.log('[EmailAgent] 💰 Enviando para Financial Agent...');
+      const emailFromStr = email.from.name 
+        ? `${email.from.name} <${email.from.email}>`
+        : email.from.email;
       const result = await this.financialAgent.runOnce({
         emailId: email.id,
         threadId: email.threadId,
         emailSubject: email.subject,
         emailBody: email.body,
+        emailFrom: emailFromStr,
+        emailDate: email.date ? new Date(email.date) : undefined,
         attachmentInfo,
       });
 

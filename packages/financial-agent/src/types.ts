@@ -15,6 +15,11 @@ export interface FinancialItem {
   emailId: string;
   threadId?: string;
   
+  // Contexto do email original (para rastreabilidade)
+  emailSubject?: string;
+  emailFrom?: string;
+  emailDate?: Date;
+  
   // Tipo e status
   type: FinancialItemType;
   status: FinancialItemStatus;

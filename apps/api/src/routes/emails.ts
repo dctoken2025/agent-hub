@@ -193,6 +193,11 @@ async function saveFinancialItemsToDatabase(
         userId,
         emailId: item.emailId,
         threadId: item.threadId || null,
+        // Contexto do email original
+        emailSubject: item.emailSubject || null,
+        emailFrom: item.emailFrom || null,
+        emailDate: item.emailDate ? new Date(item.emailDate) : null,
+        // Dados financeiros
         type: item.type,
         status: item.status,
         amount: item.amount,

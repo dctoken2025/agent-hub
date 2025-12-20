@@ -57,7 +57,9 @@ export class FinancialAnalyzer {
     emailBody: string,
     emailId: string,
     threadId?: string,
-    attachmentInfo?: string
+    attachmentInfo?: string,
+    emailFrom?: string,
+    emailDate?: Date
   ): Promise<FinancialItem[]> {
     const aiClient = getAIClient();
 
@@ -74,6 +76,11 @@ export class FinancialAnalyzer {
       return result.items.map(item => ({
         emailId,
         threadId,
+        // Contexto do email original
+        emailSubject,
+        emailFrom,
+        emailDate,
+        // Dados financeiros
         type: item.type,
         status: this.determineStatus(item.dueDate),
         amount: item.amount,

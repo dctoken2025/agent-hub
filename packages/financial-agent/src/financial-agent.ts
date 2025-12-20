@@ -7,6 +7,8 @@ export interface FinancialAgentInput {
   threadId?: string;
   emailSubject: string;
   emailBody: string;
+  emailFrom?: string;      // Remetente do email
+  emailDate?: Date;        // Data do email
   attachmentInfo?: string; // Informações sobre anexos (extraídas de PDF se disponível)
 }
 
@@ -95,7 +97,9 @@ export class FinancialAgent extends Agent<FinancialAgentInput, FinancialAgentRes
         toProcess.emailBody,
         toProcess.emailId,
         toProcess.threadId,
-        toProcess.attachmentInfo
+        toProcess.attachmentInfo,
+        toProcess.emailFrom,
+        toProcess.emailDate
       );
 
       console.log(`[FinancialAgent] ✅ Encontrados ${items.length} item(ns) financeiro(s)`);

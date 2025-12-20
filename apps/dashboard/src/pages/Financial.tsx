@@ -16,7 +16,9 @@ import {
   Filter,
   TrendingUp,
   Banknote,
-  AlertCircle
+  AlertCircle,
+  Mail,
+  ExternalLink
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn, apiRequest } from '@/lib/utils';
@@ -26,6 +28,11 @@ interface FinancialItem {
   id: number;
   emailId: string;
   threadId?: string;
+  // Contexto do email original
+  emailSubject?: string;
+  emailFrom?: string;
+  emailDate?: string;
+  // Dados financeiros
   type: 'boleto' | 'fatura' | 'cobranca' | 'nota_fiscal' | 'recibo' | 'outro';
   status: 'pending' | 'paid' | 'overdue' | 'cancelled' | 'disputed';
   amount: number;
@@ -429,6 +436,36 @@ export default function Financial() {
                   </span>
                 )}
               </div>
+
+              {/* Email de origem */}
+              {(selectedItem.emailSubject || selectedItem.emailFrom) && (
+                <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-start gap-3">
+                    <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Detectado no email:</p>
+                      {selectedItem.emailSubject && (
+                        <p className="font-medium text-sm truncate">{selectedItem.emailSubject}</p>
+                      )}
+                      {selectedItem.emailFrom && (
+                        <p className="text-sm text-muted-foreground">De: {selectedItem.emailFrom}</p>
+                      )}
+                      {selectedItem.emailDate && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {formatDate(selectedItem.emailDate)}
+                        </p>
+                      )}
+                    </div>
+                    <a
+                      href={`/emails?id=${selectedItem.emailId}`}
+                      className="p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900 rounded text-blue-600 dark:text-blue-400"
+                      title="Ver email"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </div>
+                </div>
+              )}
 
               {/* Valor */}
               <div className="text-center py-4 bg-muted/50 rounded-lg">

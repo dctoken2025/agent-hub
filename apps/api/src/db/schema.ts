@@ -218,6 +218,11 @@ export const financialItems = pgTable('financial_items', {
   emailId: varchar('email_id', { length: 255 }).notNull(),
   threadId: varchar('thread_id', { length: 255 }),
   
+  // Contexto do email original
+  emailSubject: text('email_subject'),
+  emailFrom: varchar('email_from', { length: 255 }),
+  emailDate: timestamp('email_date'),
+
   // Tipo e status
   type: varchar('type', { length: 20 }).notNull(), // boleto, fatura, cobranca, nota_fiscal, recibo, outro
   status: varchar('status', { length: 20 }).notNull().default('pending'), // pending, paid, overdue, cancelled, disputed
