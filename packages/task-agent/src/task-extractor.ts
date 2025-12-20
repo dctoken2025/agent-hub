@@ -110,8 +110,27 @@ export class TaskExtractor {
       TaskExtractionSchema as AITool
     );
 
-    if (!result || !result.items || result.items.length === 0) {
+    // Validação robusta do resultado
+    if (!result) {
+      console.log('[TaskExtractor] Resultado vazio da IA');
       return [];
+    }
+
+    // Garante que items é um array
+    const items = Array.isArray(result.items) ? result.items : [];
+    
+    if (items.length === 0) {
+      console.log('[TaskExtractor] Nenhum action item detectado');
+      return [];
+    }
+
+    // Valida que temos stakeholder
+    if (!result.stakeholder || !result.stakeholder.name) {
+      console.log('[TaskExtractor] Stakeholder não identificado, usando fallback');
+      result.stakeholder = {
+        name: 'Remetente',
+        importance: 'normal',
+      };
     }
 
     // Monta o stakeholder com informações do email
@@ -132,7 +151,7 @@ export class TaskExtractor {
     } : undefined;
 
     // Converte os itens para ActionItem
-    return result.items.map((item) => {
+    return items.map((item) => {
       const deadline: TaskDeadline | undefined = item.deadline ? {
         date: item.deadline.date,
         relative: item.deadline.relative,
