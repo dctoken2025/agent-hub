@@ -449,9 +449,10 @@ export class AgentManager {
           const legalData = data as { 
             analysesCount?: number; 
             documents?: Array<{ filename?: string; riskLevel?: string; requiresAttention?: boolean }>;
+            summary?: string;
           } | undefined;
           processedCount = legalData?.analysesCount || (legalData?.documents?.length || 0);
-          details = { analysesCount: processedCount };
+          details = { analysesCount: processedCount, summary: legalData?.summary };
 
           if (processedCount > 0) {
             logger.success(`${processedCount} documento(s) analisado(s)`, '📋');
@@ -459,6 +460,8 @@ export class AgentManager {
               const riskEmoji = doc.riskLevel === 'high' ? '🔴' : doc.riskLevel === 'medium' ? '🟡' : '🟢';
               logger.detail(`${riskEmoji} ${doc.filename || 'Documento'} - Risco: ${doc.riskLevel || 'N/A'}`);
             });
+          } else {
+            logger.info('Nenhum documento para analisar neste ciclo', '📭');
           }
         } else if (agentId.includes('financial-agent')) {
           const financialData = data as { 
@@ -492,6 +495,8 @@ export class AgentManager {
               const amount = item.amount ? (item.amount / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'N/A';
               logger.detail(`${item.creditor}: ${amount}`);
             });
+          } else {
+            logger.info('Nenhuma cobrança identificada neste email', '📭');
           }
         } else if (agentId.includes('stablecoin-agent')) {
           const stablecoinData = data as { eventsDetected?: number; anomalies?: unknown[] } | undefined;

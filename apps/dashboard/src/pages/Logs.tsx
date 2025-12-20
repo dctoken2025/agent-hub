@@ -380,33 +380,63 @@ export function Logs() {
 
                         {/* Details */}
                         <div className="mt-1 text-sm text-muted-foreground">
-                          {log.processedCount > 0 && (
-                            <span className="mr-4">
-                              📧 {log.processedCount} processados
-                            </span>
+                          {/* Email Agent */}
+                          {log.agentId.includes('email') && (
+                            <>
+                              {log.processedCount > 0 ? (
+                                <>
+                                  <span className="mr-4">📧 {log.processedCount} emails processados</span>
+                                  {log.details?.classifications && (
+                                    <span className="mr-4">
+                                      🚨 {log.details.classifications.urgent || 0} urgentes
+                                      {' • '}
+                                      📋 {log.details.classifications.low || 0} baixa
+                                    </span>
+                                  )}
+                                  {log.details?.contractsDetected && log.details.contractsDetected > 0 && (
+                                    <span className="mr-4">📜 {log.details.contractsDetected} contratos</span>
+                                  )}
+                                  {log.details?.financialItemsDetected && log.details.financialItemsDetected > 0 && (
+                                    <span className="mr-4">💰 {log.details.financialItemsDetected} cobranças</span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground">📭 Nenhum email novo para processar</span>
+                              )}
+                            </>
                           )}
-                          {log.details?.classifications && (
-                            <span className="mr-4">
-                              🚨 {log.details.classifications.urgent || 0} urgentes
-                              {' • '}
-                              📋 {log.details.classifications.low || 0} baixa
-                            </span>
+                          {/* Legal Agent */}
+                          {log.agentId.includes('legal') && (
+                            <>
+                              {log.processedCount > 0 ? (
+                                <span className="mr-4">📋 {log.processedCount} documento(s) analisado(s)</span>
+                              ) : (
+                                <span className="text-muted-foreground">📭 Nenhum documento para analisar</span>
+                              )}
+                            </>
                           )}
-                          {log.details?.contractsDetected && log.details.contractsDetected > 0 && (
-                            <span className="mr-4">
-                              📜 {log.details.contractsDetected} contratos
-                            </span>
+                          {/* Financial Agent */}
+                          {log.agentId.includes('financial') && (
+                            <>
+                              {log.processedCount > 0 || (log.details?.itemsFound && log.details.itemsFound > 0) ? (
+                                <span className="mr-4">
+                                  💵 {log.details?.itemsFound || log.processedCount} cobrança(s)
+                                  {log.details?.totalAmount && ` (R$ ${(log.details.totalAmount / 100).toFixed(2)})`}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">📭 Nenhuma cobrança identificada neste email</span>
+                              )}
+                            </>
                           )}
-                          {log.details?.financialItemsDetected && log.details.financialItemsDetected > 0 && (
-                            <span className="mr-4">
-                              💰 {log.details.financialItemsDetected} cobranças
-                            </span>
-                          )}
-                          {log.details?.itemsFound && log.details.itemsFound > 0 && (
-                            <span className="mr-4">
-                              💵 {log.details.itemsFound} itens
-                              {log.details.totalAmount && ` (R$ ${(log.details.totalAmount / 100).toFixed(2)})`}
-                            </span>
+                          {/* Stablecoin Agent */}
+                          {log.agentId.includes('stablecoin') && (
+                            <>
+                              {log.processedCount > 0 ? (
+                                <span className="mr-4">🪙 {log.processedCount} evento(s) detectado(s)</span>
+                              ) : (
+                                <span className="text-muted-foreground">📊 Nenhuma atividade significativa</span>
+                              )}
+                            </>
                           )}
                         </div>
 
