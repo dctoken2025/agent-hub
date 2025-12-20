@@ -79,6 +79,21 @@ export const userConfigs = pgTable('user_configs', {
       frequencyPerHour: 100,
     },
   }),
+  financialAgentConfig: jsonb('financial_agent_config').default({
+    enabled: true,
+    autoAnalyze: true,
+    urgentDaysBeforeDue: 3,
+    approvalThreshold: 500000, // R$ 5.000 em centavos
+    financialKeywords: [
+      'boleto', 'fatura', 'invoice', 'cobrança', 'pagamento',
+      'vencimento', 'vence em', 'pagar até', 'payment due',
+      'nota fiscal', 'nf-e', 'nfe', 'danfe', 'recibo',
+      'valor', 'parcela', 'mensalidade', 'anuidade',
+      'total a pagar', 'amount due',
+      'banco', 'pix', 'transferência',
+      'efetuar pagamento', 'segue boleto', 'anexo boleto',
+    ],
+  }),
   
   // Notificações
   notificationConfig: jsonb('notification_config').default({
@@ -192,6 +207,67 @@ export const legalAnalyses = pgTable('legal_analyses', {
   // Agrupamento por thread/tema
   threadId: varchar('thread_id', { length: 255 }), // threadId do email para agrupar
   groupId: varchar('group_id', { length: 255 }), // ID de grupo para análises relacionadas
+});
+
+// ===========================================
+// Itens Financeiros (Cobranças, Boletos, Faturas)
+// ===========================================
+export const financialItems = pgTable('financial_items', {
+  id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  emailId: varchar('email_id', { length: 255 }).notNull(),
+  threadId: varchar('thread_id', { length: 255 }),
+  
+  // Tipo e status
+  type: varchar('type', { length: 20 }).notNull(), // boleto, fatura, cobranca, nota_fiscal, recibo, outro
+  status: varchar('status', { length: 20 }).notNull().default('pending'), // pending, paid, overdue, cancelled, disputed
+  
+  // Valores
+  amount: integer('amount').notNull(), // Valor em centavos
+  currency: varchar('currency', { length: 10 }).default('BRL'),
+  
+  // Datas
+  dueDate: timestamp('due_date'),
+  issueDate: timestamp('issue_date'),
+  competenceDate: varchar('competence_date', { length: 7 }), // YYYY-MM
+  paidAt: timestamp('paid_at'),
+  
+  // Credor
+  creditor: varchar('creditor', { length: 255 }).notNull(),
+  creditorType: varchar('creditor_type', { length: 20 }), // fornecedor, cliente, governo, banco, servico, outro
+  creditorDocument: varchar('creditor_document', { length: 20 }), // CNPJ/CPF
+  
+  // Detalhes
+  description: text('description').notNull(),
+  category: varchar('category', { length: 20 }), // operacional, imposto, folha, servico, produto, aluguel, utilidade, marketing, juridico, outro
+  reference: varchar('reference', { length: 255 }), // Número de referência, NF, pedido
+  installmentCurrent: integer('installment_current'),
+  installmentTotal: integer('installment_total'),
+  
+  // Dados do boleto
+  barcodeData: varchar('barcode_data', { length: 60 }),
+  barcodeType: varchar('barcode_type', { length: 20 }), // boleto, concessionaria, arrecadacao
+  bankCode: varchar('bank_code', { length: 10 }),
+  
+  // Anexo
+  attachmentId: varchar('attachment_id', { length: 255 }),
+  attachmentFilename: varchar('attachment_filename', { length: 500 }),
+  
+  // Análise
+  priority: varchar('priority', { length: 10 }).default('normal'), // urgent, high, normal, low
+  notes: text('notes'),
+  relatedProject: varchar('related_project', { length: 255 }),
+  requiresApproval: boolean('requires_approval').default(false),
+  
+  // Aprovação
+  approvedBy: varchar('approved_by', { length: 255 }),
+  approvedAt: timestamp('approved_at'),
+  
+  // Metadados
+  confidence: integer('confidence'), // 0-100
+  analyzedAt: timestamp('analyzed_at').defaultNow(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // ===========================================
@@ -314,6 +390,10 @@ export type NewDailyStat = typeof dailyStats.$inferInsert;
 // Legal
 export type LegalAnalysis = typeof legalAnalyses.$inferSelect;
 export type NewLegalAnalysis = typeof legalAnalyses.$inferInsert;
+
+// Financial
+export type FinancialItem = typeof financialItems.$inferSelect;
+export type NewFinancialItem = typeof financialItems.$inferInsert;
 
 // Stablecoins
 export type Stablecoin = typeof stablecoins.$inferSelect;

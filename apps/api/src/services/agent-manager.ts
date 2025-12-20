@@ -6,12 +6,13 @@
  */
 
 import { AgentScheduler, Notifier, type Agent } from '@agent-hub/core';
-import { EmailAgent, type EmailAgentConfig } from '@agent-hub/email-agent';
+import { EmailAgent, type EmailAgentConfig, type EmailAgentResult } from '@agent-hub/email-agent';
 import { LegalAgent, type LegalAgentConfig } from '@agent-hub/legal-agent';
 import { StablecoinAgent, type StablecoinAgentConfig } from '@agent-hub/stablecoin-agent';
 import { getDb, users, agentLogs, stablecoins, stablecoinEvents, stablecoinAnomalies, supplySnapshots } from '../db/index.js';
 import { eq } from 'drizzle-orm';
 import { loadUserConfig, loadGlobalConfig } from '../routes/config.js';
+import { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase } from '../routes/emails.js';
 
 interface UserAgentSet {
   userId: string;
@@ -330,14 +331,28 @@ export class AgentManager {
       try {
         const agentResult = event.result as {
           success?: boolean;
-          data?: {
-            processedCount?: number;
-            classifications?: Record<string, number>;
-            contractsDetected?: number;
-          };
+          data?: EmailAgentResult;
         } | null;
 
         const data = agentResult?.data;
+
+        // Se for o Email Agent, salva os dados no banco
+        if (data && agent.getInfo().config.id.includes('email-agent')) {
+          // Salva emails classificados
+          if (data.emails && data.emails.length > 0) {
+            await saveEmailsToDatabase(data.emails, userId);
+          }
+          
+          // Salva análises jurídicas
+          if (data.legalAnalyses && data.legalAnalyses.length > 0) {
+            await saveLegalAnalysesToDatabase(data.legalAnalyses, userId);
+          }
+          
+          // Salva itens financeiros
+          if (data.financialItems && data.financialItems.length > 0) {
+            await saveFinancialItemsToDatabase(data.financialItems, userId);
+          }
+        }
 
         await db.insert(agentLogs).values({
           userId,
@@ -350,6 +365,7 @@ export class AgentManager {
           details: {
             classifications: data?.classifications,
             contractsDetected: data?.contractsDetected,
+            financialItemsDetected: data?.financialItemsDetected,
           },
         });
       } catch (error) {

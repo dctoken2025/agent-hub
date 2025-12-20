@@ -60,6 +60,15 @@ export interface StablecoinAgentSettings {
   };
 }
 
+// Configuração do Financial Agent
+export interface FinancialAgentSettings {
+  enabled: boolean;
+  autoAnalyze: boolean;
+  urgentDaysBeforeDue: number;
+  approvalThreshold: number;
+  financialKeywords: string[];
+}
+
 // Configuração de Notificações
 export interface NotificationSettings {
   slackWebhookUrl?: string;
@@ -122,6 +131,7 @@ export async function loadUserConfig(userId: string): Promise<{
   emailAgent: EmailAgentSettings;
   legalAgent: LegalAgentSettings;
   stablecoinAgent: StablecoinAgentSettings;
+  financialAgent: FinancialAgentSettings;
   notifications: NotificationSettings;
 }> {
   const defaults = {
@@ -168,6 +178,21 @@ export async function loadUserConfig(userId: string): Promise<{
         frequencyPerHour: 100,
       },
     } as StablecoinAgentSettings,
+    financialAgent: {
+      enabled: true,
+      autoAnalyze: true,
+      urgentDaysBeforeDue: 3,
+      approvalThreshold: 500000,
+      financialKeywords: [
+        'boleto', 'fatura', 'invoice', 'cobrança', 'pagamento',
+        'vencimento', 'vence em', 'pagar até', 'payment due',
+        'nota fiscal', 'nf-e', 'nfe', 'danfe', 'recibo',
+        'valor', 'parcela', 'mensalidade', 'anuidade',
+        'total a pagar', 'amount due',
+        'banco', 'pix', 'transferência',
+        'efetuar pagamento', 'segue boleto', 'anexo boleto',
+      ],
+    } as FinancialAgentSettings,
     notifications: {} as NotificationSettings,
   };
 
@@ -188,6 +213,7 @@ export async function loadUserConfig(userId: string): Promise<{
       emailAgent: (config.emailAgentConfig as EmailAgentSettings) || defaults.emailAgent,
       legalAgent: (config.legalAgentConfig as LegalAgentSettings) || defaults.legalAgent,
       stablecoinAgent: (config.stablecoinAgentConfig as StablecoinAgentSettings) || defaults.stablecoinAgent,
+      financialAgent: (config.financialAgentConfig as FinancialAgentSettings) || defaults.financialAgent,
       notifications: (config.notificationConfig as NotificationSettings) || defaults.notifications,
     };
   } catch (error) {
@@ -229,6 +255,7 @@ export async function saveUserConfigValue(
     emailAgentConfig: EmailAgentSettings;
     legalAgentConfig: LegalAgentSettings;
     stablecoinAgentConfig: StablecoinAgentSettings;
+    financialAgentConfig: FinancialAgentSettings;
     notificationConfig: NotificationSettings;
   }>
 ): Promise<void> {
@@ -645,6 +672,7 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
       emailAgent: config.emailAgent,
       legalAgent: config.legalAgent,
       stablecoinAgent: config.stablecoinAgent,
+      financialAgent: config.financialAgent,
     };
   });
 
@@ -738,6 +766,37 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
         };
       } catch (error) {
         console.error('[Config] Erro ao salvar Stablecoin Agent:', error);
+        return reply.status(500).send({
+          success: false,
+          error: error instanceof Error ? error.message : 'Erro ao salvar',
+        });
+      }
+    }
+  );
+
+  // Atualiza configurações do Financial Agent
+  app.put<{ Body: Partial<FinancialAgentSettings> }>(
+    '/agents/financial',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      try {
+        const userId = request.user!.id;
+        const currentConfig = await loadUserConfig(userId);
+
+        const updated: FinancialAgentSettings = {
+          ...currentConfig.financialAgent,
+          ...request.body,
+        };
+
+        await saveUserConfigValue(userId, { financialAgentConfig: updated });
+
+        return {
+          success: true,
+          message: 'Configuração do Financial Agent salva',
+          config: updated,
+        };
+      } catch (error) {
+        console.error('[Config] Erro ao salvar Financial Agent:', error);
         return reply.status(500).send({
           success: false,
           error: error instanceof Error ? error.message : 'Erro ao salvar',

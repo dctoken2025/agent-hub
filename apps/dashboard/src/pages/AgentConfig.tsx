@@ -4,7 +4,7 @@ import {
   Mail, Scale, Plus, Trash2, Save, 
   Clock, Zap, AlertTriangle, CheckCircle, Edit2, X,
   ChevronDown, ChevronUp, ToggleLeft, ToggleRight, Coins, Calendar,
-  Lock, Lightbulb, Shield, FileText
+  Lock, Lightbulb, Shield, FileText, DollarSign, Receipt
 } from 'lucide-react';
 import { useDialog } from '../components/Dialog';
 import { apiRequest } from '@/lib/utils';
@@ -210,10 +210,19 @@ interface StablecoinAgentSettings {
   };
 }
 
+interface FinancialAgentSettings {
+  enabled: boolean;
+  autoAnalyze: boolean;
+  urgentDaysBeforeDue: number;
+  approvalThreshold: number;
+  financialKeywords: string[];
+}
+
 interface AgentConfigResponse {
   emailAgent: EmailAgentSettings;
   legalAgent: LegalAgentSettings;
   stablecoinAgent: StablecoinAgentSettings;
+  financialAgent: FinancialAgentSettings;
 }
 
 // Usa apiRequest de @/lib/utils que inclui o token de autenticação
@@ -254,7 +263,7 @@ const operatorLabels = {
 export default function AgentConfig() {
   const queryClient = useQueryClient();
   const dialog = useDialog();
-  const [expandedSection, setExpandedSection] = useState<'email' | 'legal' | 'stablecoin' | null>('email');
+  const [expandedSection, setExpandedSection] = useState<'email' | 'legal' | 'financial' | 'stablecoin' | null>('email');
   const [editingRule, setEditingRule] = useState<ClassificationRule | null>(null);
   const [showNewRule, setShowNewRule] = useState(false);
   const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
@@ -265,11 +274,13 @@ export default function AgentConfig() {
   const [emailForm, setEmailForm] = useState<EmailAgentSettings | null>(null);
   const [legalForm, setLegalForm] = useState<LegalAgentSettings | null>(null);
   const [stablecoinForm, setStablecoinForm] = useState<StablecoinAgentSettings | null>(null);
-  
+  const [financialForm, setFinancialForm] = useState<FinancialAgentSettings | null>(null);
+
   // Track se houve mudanças
   const [emailChanged, setEmailChanged] = useState(false);
   const [legalChanged, setLegalChanged] = useState(false);
   const [stablecoinChanged, setStablecoinChanged] = useState(false);
+  const [financialChanged, setFinancialChanged] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['agentConfig'],
@@ -282,8 +293,9 @@ export default function AgentConfig() {
       if (!emailForm) setEmailForm(data.emailAgent);
       if (!legalForm) setLegalForm(data.legalAgent);
       if (!stablecoinForm) setStablecoinForm(data.stablecoinAgent);
+      if (!financialForm) setFinancialForm(data.financialAgent);
     }
-  }, [data, emailForm, legalForm, stablecoinForm]);
+  }, [data, emailForm, legalForm, stablecoinForm, financialForm]);
 
   const updateEmailAgent = useMutation({
     mutationFn: (settings: Partial<EmailAgentSettings>) =>
@@ -327,6 +339,20 @@ export default function AgentConfig() {
     onError: (error: Error) => dialog.error(error.message),
   });
 
+  const updateFinancialAgent = useMutation({
+    mutationFn: (settings: Partial<FinancialAgentSettings>) =>
+      apiRequest('/config/agents/financial', {
+        method: 'PUT',
+        body: JSON.stringify(settings),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
+      setFinancialChanged(false);
+      dialog.success('Configurações do Financial Agent salvas!');
+    },
+    onError: (error: Error) => dialog.error(error.message),
+  });
+
   const addRule = useMutation({
     mutationFn: (rule: ClassificationRule) =>
       apiRequest('/config/agents/email/rules', {
@@ -365,7 +391,7 @@ export default function AgentConfig() {
     onError: (error: Error) => dialog.error(error.message),
   });
 
-  if (isLoading || !emailForm || !legalForm || !stablecoinForm) {
+  if (isLoading || !emailForm || !legalForm || !stablecoinForm || !financialForm) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -840,6 +866,151 @@ export default function AgentConfig() {
               >
                 <Save className="h-4 w-4" />
                 {updateLegalAgent.isPending ? 'Salvando...' : 'Salvar Configurações'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Financial Agent Config */}
+      <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
+        <button
+          onClick={() => setExpandedSection(expandedSection === 'financial' ? null : 'financial')}
+          className="w-full p-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+              <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </div>
+            <div className="text-left">
+              <h3 className="font-semibold">Financial Agent</h3>
+              <p className="text-sm text-muted-foreground">
+                Detecta cobranças, boletos e pagamentos
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {financialChanged && (
+              <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                Alterações pendentes
+              </span>
+            )}
+            <span className={`px-2 py-1 rounded text-xs font-medium ${financialForm.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+              {financialForm.enabled ? 'Ativo' : 'Inativo'}
+            </span>
+            {expandedSection === 'financial' ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+          </div>
+        </button>
+
+        {expandedSection === 'financial' && (
+          <div className="p-4 border-t space-y-6">
+            {/* Regras Embutidas do Financial Agent */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Receipt className="h-4 w-4 text-muted-foreground" />
+                <h4 className="font-medium">Detecção Automática</h4>
+                <span className="text-xs bg-muted px-2 py-0.5 rounded">Powered by Claude</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                O agente financeiro detecta automaticamente emails sobre cobranças e extrai:
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {['Boletos bancários', 'Faturas', 'Notas fiscais', 'Valores e datas', 'Código de barras', 'Credor/Fornecedor'].map((item, idx) => (
+                  <div key={idx} className="p-2 border rounded-lg bg-muted/20 text-sm flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Configurações */}
+            <div className="border-t pt-4">
+              <h4 className="font-medium flex items-center gap-2 mb-3">
+                <Zap className="h-4 w-4" />
+                Configurações
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Análise automática</label>
+                  <button
+                    onClick={() => {
+                      setFinancialForm({ ...financialForm, autoAnalyze: !financialForm.autoAnalyze });
+                      setFinancialChanged(true);
+                    }}
+                    className={`w-full px-3 py-2 border rounded-lg flex items-center justify-center gap-2 transition-colors ${
+                      financialForm.autoAnalyze ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {financialForm.autoAnalyze ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                    {financialForm.autoAnalyze ? 'Ativada' : 'Desativada'}
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Dias antes = urgente</label>
+                  <input
+                    type="number"
+                    value={financialForm.urgentDaysBeforeDue}
+                    onChange={(e) => {
+                      setFinancialForm({ ...financialForm, urgentDaysBeforeDue: parseInt(e.target.value) || 3 });
+                      setFinancialChanged(true);
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg bg-background"
+                    min={1}
+                    max={14}
+                  />
+                  <p className="text-xs text-muted-foreground">Marcar como urgente X dias antes do vencimento</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Limite aprovação (R$)</label>
+                  <input
+                    type="text"
+                    value={(financialForm.approvalThreshold / 100).toLocaleString('pt-BR')}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value.replace(/\D/g, '')) || 0;
+                      setFinancialForm({ ...financialForm, approvalThreshold: value * 100 });
+                      setFinancialChanged(true);
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground">Valores acima requerem aprovação</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Palavras-chave */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                Palavras-chave para detecção
+                <span className="text-xs text-muted-foreground">(uma por linha)</span>
+              </label>
+              <textarea
+                value={(financialForm.financialKeywords || []).join('\n')}
+                onChange={(e) => {
+                  setFinancialForm({ 
+                    ...financialForm, 
+                    financialKeywords: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) 
+                  });
+                  setFinancialChanged(true);
+                }}
+                className="w-full px-3 py-2 border rounded-lg bg-background h-32 font-mono text-sm"
+                placeholder="boleto&#10;fatura&#10;pagamento&#10;cobrança"
+              />
+            </div>
+
+            {/* Botão Salvar */}
+            <div className="flex justify-end">
+              <button
+                onClick={() => updateFinancialAgent.mutate(financialForm)}
+                disabled={!financialChanged || updateFinancialAgent.isPending}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  financialChanged 
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90' 
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <Save className="h-4 w-4" />
+                {updateFinancialAgent.isPending ? 'Salvando...' : 'Salvar Configurações'}
               </button>
             </div>
           </div>

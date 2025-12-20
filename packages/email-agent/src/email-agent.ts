@@ -1,5 +1,6 @@
 import { Agent, type AgentConfig, type AgentResult, Notifier } from '@agent-hub/core';
 import { LegalAgent, type LegalAgentConfig, type ContractAnalysis } from '@agent-hub/legal-agent';
+import { FinancialAgent, type FinancialAgentConfig, type FinancialItem } from '@agent-hub/financial-agent';
 import { GmailClient } from './gmail-client.js';
 import { EmailClassifier, type ClassificationRule } from './email-classifier.js';
 import type { Email, EmailAgentConfig, ClassifiedEmail, EmailPriority } from './types.js';
@@ -16,6 +17,8 @@ export interface EmailAgentResult {
   emails: ClassifiedEmail[];
   contractsDetected: number;
   legalAnalyses: ContractAnalysis[];
+  financialItemsDetected: number;
+  financialItems: FinancialItem[];
 }
 
 /**
@@ -30,6 +33,7 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
   private emailConfig: EmailAgentConfig;
   private notifier?: Notifier;
   private legalAgent?: LegalAgent;
+  private financialAgent?: FinancialAgent;
   private processedLabelId?: string;
 
   constructor(
@@ -45,6 +49,9 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
 
     // Inicializa Legal Agent integrado
     this.initializeLegalAgent();
+    
+    // Inicializa Financial Agent integrado
+    this.initializeFinancialAgent();
   }
 
   private initializeLegalAgent(): void {
@@ -73,6 +80,37 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
     );
 
     console.log('[EmailAgent] Legal Agent integrado');
+  }
+
+  private initializeFinancialAgent(): void {
+    const financialConfig: FinancialAgentConfig = {
+      financialKeywords: [
+        'boleto', 'fatura', 'invoice', 'cobrança', 'pagamento',
+        'vencimento', 'vence em', 'pagar até', 'payment due',
+        'nota fiscal', 'nf-e', 'nfe', 'danfe', 'recibo',
+        'valor', 'parcela', 'mensalidade', 'anuidade',
+        'total a pagar', 'amount due',
+        'banco', 'pix', 'transferência',
+        'efetuar pagamento', 'segue boleto', 'anexo boleto',
+      ],
+      supportedMimeTypes: ['application/pdf', 'image/png', 'image/jpeg'],
+      maxAttachmentSize: 5 * 1024 * 1024, // 5MB
+      urgentDaysBeforeDue: 3,
+      approvalThreshold: 500000, // R$ 5.000 em centavos
+    };
+
+    this.financialAgent = new FinancialAgent(
+      {
+        id: 'financial-agent',
+        name: 'Financial Agent',
+        description: 'Agente de análise de cobranças e pagamentos',
+        enabled: true,
+      },
+      financialConfig,
+      this.notifier
+    );
+
+    console.log('[EmailAgent] Financial Agent integrado');
   }
 
   /**
@@ -171,7 +209,9 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
 
       const classifiedEmails: ClassifiedEmail[] = [];
       const legalAnalyses: ContractAnalysis[] = [];
+      const financialItems: FinancialItem[] = [];
       let contractsDetected = 0;
+      let financialItemsDetected = 0;
 
       const counts: EmailAgentResult['classifications'] = {
         urgent: 0,
@@ -210,6 +250,18 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
             legalAnalyses.push(...analyses);
           }
 
+          // Verifica se é email financeiro (cobranças, boletos, faturas)
+          if (this.isFinancialEmail(email)) {
+            console.log(`[EmailAgent] 💰 Email financeiro detectado: ${email.subject}`);
+
+            // Processa com Financial Agent
+            const items = await this.processWithFinancialAgent(email);
+            if (items.length > 0) {
+              financialItems.push(...items);
+              financialItemsDetected += items.length;
+            }
+          }
+
           // Adiciona label "AgentHub-Processado" para não processar novamente
           // NÃO marca como lido - mantém o estado original no Gmail
           try {
@@ -237,6 +289,8 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
         emails: classifiedEmails,
         contractsDetected,
         legalAnalyses,
+        financialItemsDetected,
+        financialItems,
       };
 
       // Atualiza lastProcessedAt com a data/hora atual (timezone Brasil)
@@ -353,6 +407,94 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
     }
 
     return false;
+  }
+
+  /**
+   * Verifica se um email parece ser sobre finanças (boletos, cobranças, pagamentos).
+   */
+  private isFinancialEmail(email: Email): boolean {
+    const content = `${email.subject} ${email.body}`.toLowerCase();
+    
+    const financialIndicators = [
+      // Boletos e faturas
+      'boleto', 'fatura', 'invoice', 'cobrança', 'pagamento',
+      'vencimento', 'vence em', 'pagar até', 'payment due',
+      // Documentos fiscais
+      'nota fiscal', 'nf-e', 'nfe', 'danfe', 'recibo',
+      // Valores
+      'valor a pagar', 'total a pagar', 'parcela', 'mensalidade',
+      // Ações
+      'segue boleto', 'anexo boleto', 'efetuar pagamento',
+      'realize o pagamento', 'lembrete de pagamento',
+      // Códigos
+      'código de barras', 'linha digitável', 'pix copia',
+    ];
+
+    // Verifica se tem indicadores financeiros
+    const hasFinancialIndicator = financialIndicators.some(indicator => 
+      content.includes(indicator)
+    );
+
+    // Também considera emails de remetentes financeiros conhecidos
+    const financialSenders = [
+      'cobranca@', 'boleto@', 'fatura@', 'nfe@', 'financeiro@',
+      'pagamento@', 'billing@', 'invoice@', 'accounts@',
+    ];
+    
+    const fromEmail = email.from.email.toLowerCase();
+    const isFromFinancialSender = financialSenders.some(s => fromEmail.includes(s));
+
+    return hasFinancialIndicator || isFromFinancialSender;
+  }
+
+  /**
+   * Processa email com Financial Agent para análise de cobranças.
+   */
+  private async processWithFinancialAgent(email: Email): Promise<FinancialItem[]> {
+    console.log(`[EmailAgent] 💰 Iniciando processamento com Financial Agent para: ${email.subject}`);
+    
+    if (!this.financialAgent) {
+      console.log('[EmailAgent] ⚠️ Financial Agent não inicializado');
+      return [];
+    }
+
+    try {
+      // Monta informações sobre anexos (se houver)
+      let attachmentInfo = '';
+      if (email.attachments && email.attachments.length > 0) {
+        attachmentInfo = email.attachments.map(att => 
+          `- ${att.filename} (${att.mimeType}, ${att.size} bytes)`
+        ).join('\n');
+      }
+
+      // Envia para Financial Agent
+      console.log('[EmailAgent] 💰 Enviando para Financial Agent...');
+      const result = await this.financialAgent.runOnce({
+        emailId: email.id,
+        threadId: email.threadId,
+        emailSubject: email.subject,
+        emailBody: email.body,
+        attachmentInfo,
+      });
+
+      if (result.success && result.data) {
+        console.log(`[EmailAgent] ✅ Financial Agent concluiu: ${result.data.itemsFound} item(ns) encontrado(s)`);
+        if (result.data.items.length > 0) {
+          result.data.items.forEach(item => {
+            const amount = (item.amount / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+            console.log(`[EmailAgent]    💵 ${item.creditor}: R$ ${amount} - ${item.description.substring(0, 50)}`);
+          });
+        }
+        return result.data.items;
+      } else {
+        console.log(`[EmailAgent] ⚠️ Financial Agent retornou sem sucesso: ${result.error || 'sem erro específico'}`);
+      }
+
+      return [];
+    } catch (error) {
+      console.error('[EmailAgent] ❌ Erro ao processar com Financial Agent:', error instanceof Error ? error.message : error);
+      return [];
+    }
   }
 
   /**
@@ -480,6 +622,13 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
   }
 
   /**
+   * Retorna o Financial Agent integrado.
+   */
+  getFinancialAgent(): FinancialAgent | undefined {
+    return this.financialAgent;
+  }
+
+  /**
    * Retorna resumo formatado dos emails processados.
    */
   formatSummary(result: EmailAgentResult): string {
@@ -507,6 +656,31 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
                            analysis.overallRisk === 'medium' ? '🟡' : '✅';
           lines.push(`${riskEmoji} ${analysis.documentName} - Risco: ${analysis.overallRisk}`);
         });
+      }
+    }
+
+    if (result.financialItemsDetected > 0) {
+      lines.push('', `💰 **Cobranças Detectadas:** ${result.financialItemsDetected}`);
+      
+      if (result.financialItems.length > 0) {
+        const total = result.financialItems.reduce((sum, item) => sum + item.amount, 0);
+        lines.push(`Total: R$ ${(total / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
+        
+        const overdue = result.financialItems.filter(i => i.status === 'overdue');
+        if (overdue.length > 0) {
+          lines.push(`🔴 ${overdue.length} vencida(s)`);
+        }
+        
+        lines.push('', '**Itens:**');
+        result.financialItems.slice(0, 5).forEach(item => {
+          const amount = (item.amount / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+          const statusEmoji = item.status === 'overdue' ? '🔴' : item.priority === 'urgent' ? '⚠️' : '📋';
+          lines.push(`${statusEmoji} ${item.creditor}: R$ ${amount} - ${item.dueDate || 'Sem vencimento'}`);
+        });
+        
+        if (result.financialItems.length > 5) {
+          lines.push(`... e mais ${result.financialItems.length - 5} item(ns)`);
+        }
       }
     }
 

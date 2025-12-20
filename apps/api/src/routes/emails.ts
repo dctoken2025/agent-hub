@@ -1,10 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { getDb, classifiedEmails, legalAnalyses, users } from '../db/index.js';
+import { getDb, classifiedEmails, legalAnalyses, financialItems, users } from '../db/index.js';
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
 import { loadGlobalConfig } from './config.js';
 import { getAgentManager } from '../services/agent-manager.js';
 import type { ClassifiedEmail, ContractAnalysis } from '@agent-hub/email-agent';
+import type { FinancialItem } from '@agent-hub/financial-agent';
 
 // Função para salvar emails no banco (com userId)
 async function saveEmailsToDatabase(emails: ClassifiedEmail[], userId: string): Promise<void> {
@@ -149,6 +150,84 @@ async function saveLegalAnalysesToDatabase(
 
   console.log(
     `[EmailRoutes] Total de análises jurídicas: ${savedCount} novas, ${skippedCount} já existentes`
+  );
+}
+
+// Função para salvar itens financeiros no banco (com userId)
+async function saveFinancialItemsToDatabase(
+  items: FinancialItem[],
+  userId: string
+): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    console.log('[EmailRoutes] Banco não disponível para salvar itens financeiros');
+    return;
+  }
+
+  let savedCount = 0;
+  let skippedCount = 0;
+
+  for (const item of items) {
+    try {
+      // Verifica se já existe (baseado em emailId + creditor + amount + dueDate)
+      const existing = await db
+        .select()
+        .from(financialItems)
+        .where(
+          and(
+            eq(financialItems.emailId, item.emailId),
+            eq(financialItems.creditor, item.creditor),
+            eq(financialItems.amount, item.amount),
+            eq(financialItems.userId, userId)
+          )
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        console.log(`[EmailRoutes] ⏭️ Item financeiro já existe: ${item.creditor} - R$ ${(item.amount / 100).toFixed(2)}`);
+        skippedCount++;
+        continue;
+      }
+
+      await db.insert(financialItems).values({
+        userId,
+        emailId: item.emailId,
+        threadId: item.threadId || null,
+        type: item.type,
+        status: item.status,
+        amount: item.amount,
+        currency: item.currency || 'BRL',
+        dueDate: item.dueDate ? new Date(item.dueDate) : null,
+        issueDate: item.issueDate ? new Date(item.issueDate) : null,
+        competenceDate: item.competenceDate || null,
+        creditor: item.creditor,
+        creditorType: item.creditorType,
+        creditorDocument: item.creditorDocument || null,
+        description: item.description,
+        category: item.category,
+        reference: item.reference || null,
+        installmentCurrent: item.installment?.current || null,
+        installmentTotal: item.installment?.total || null,
+        barcodeData: item.barcodeData || null,
+        barcodeType: item.barcodeType || null,
+        bankCode: item.bankCode || null,
+        attachmentId: item.attachmentId || null,
+        attachmentFilename: item.attachmentFilename || null,
+        priority: item.priority,
+        notes: item.notes || null,
+        relatedProject: item.relatedProject || null,
+        requiresApproval: item.requiresApproval || false,
+        confidence: item.confidence,
+        analyzedAt: new Date(),
+      });
+      savedCount++;
+    } catch (error) {
+      console.error(`[EmailRoutes] Erro ao salvar item financeiro ${item.creditor}:`, error);
+    }
+  }
+
+  console.log(
+    `[EmailRoutes] Total de itens financeiros: ${savedCount} novos, ${skippedCount} já existentes`
   );
 }
 
@@ -602,4 +681,4 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
 };
 
 // Exporta funções helper para uso em outros lugares
-export { saveEmailsToDatabase, saveLegalAnalysesToDatabase };
+export { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase };

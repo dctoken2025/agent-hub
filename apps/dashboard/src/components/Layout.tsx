@@ -12,7 +12,8 @@ import {
   Sliders,
   LogOut,
   User,
-  Shield
+  Shield,
+  DollarSign
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -22,6 +23,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Emails', href: '/emails', icon: Mail },
   { name: 'Análises Jurídicas', href: '/legal', icon: Scale },
+  { name: 'Financeiro', href: '/financial', icon: DollarSign },
   { name: 'Stablecoins', href: '/stablecoins', icon: Coins },
   { name: 'Agentes', href: '/agents', icon: Bot },
   { name: 'Config. Agentes', href: '/agent-config', icon: Sliders },

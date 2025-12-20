@@ -15,6 +15,7 @@ import { authRoutes } from './routes/auth.js';
 import { configRoutes } from './routes/config.js';
 import { legalRoutes } from './routes/legal.js';
 import { stablecoinRoutes } from './routes/stablecoins.js';
+import { financialRoutes } from './routes/financial.js';
 
 // Inicializa banco de dados
 initDatabase();
@@ -53,6 +54,7 @@ async function main() {
   await app.register(configRoutes, { prefix: '/api/config' });
   await app.register(legalRoutes, { prefix: '/api/legal' });
   await app.register(stablecoinRoutes, { prefix: '/api/stablecoins' });
+  await app.register(financialRoutes, { prefix: '/api/financial' });
 
   // Health check (público)
   app.get('/api/health', async () => {
