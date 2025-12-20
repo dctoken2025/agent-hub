@@ -12,6 +12,7 @@ import { StablecoinMonitor } from './pages/StablecoinMonitor';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
 import AgentConfig from './pages/AgentConfig';
+import { AIUsage } from './pages/AIUsage';
 import { Loader2 } from 'lucide-react';
 
 function AppContent() {
@@ -47,6 +48,7 @@ function AppContent() {
           <Route path="/legal" component={LegalAnalyses} />
           <Route path="/financial" component={Financial} />
           <Route path="/stablecoins" component={StablecoinMonitor} />
+          <Route path="/ai-usage" component={AIUsage} />
           <Route path="/settings" component={Settings} />
           <Route>
             <div className="flex items-center justify-center h-64">

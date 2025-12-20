@@ -364,6 +364,34 @@ export const supplySnapshots = pgTable('supply_snapshots', {
 });
 
 // ===========================================
+// Logs de Uso da AI (Anthropic/OpenAI)
+// ===========================================
+export const aiUsageLogs = pgTable('ai_usage_logs', {
+  id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  
+  // Provider e Modelo
+  provider: varchar('provider', { length: 20 }).notNull(), // 'anthropic' ou 'openai'
+  model: varchar('model', { length: 50 }).notNull(),
+  
+  // Contexto
+  agentId: varchar('agent_id', { length: 50 }),
+  operation: varchar('operation', { length: 100 }),
+  
+  // Tokens e Custo
+  inputTokens: integer('input_tokens').notNull(),
+  outputTokens: integer('output_tokens').notNull(),
+  estimatedCost: integer('estimated_cost'), // em microdólares (1 USD = 1.000.000)
+  
+  // Metadata
+  durationMs: integer('duration_ms'),
+  success: boolean('success').default(true),
+  errorMessage: text('error_message'),
+  
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// ===========================================
 // Estatísticas Diárias
 // ===========================================
 export const dailyStats = pgTable('daily_stats', {
@@ -430,3 +458,7 @@ export type NewStablecoinAnomaly = typeof stablecoinAnomalies.$inferInsert;
 
 export type SupplySnapshot = typeof supplySnapshots.$inferSelect;
 export type NewSupplySnapshot = typeof supplySnapshots.$inferInsert;
+
+// AI Usage
+export type AIUsageLog = typeof aiUsageLogs.$inferSelect;
+export type NewAIUsageLog = typeof aiUsageLogs.$inferInsert;

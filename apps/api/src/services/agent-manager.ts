@@ -5,16 +5,54 @@
  * Cada usuário tem suas próprias instâncias de agentes com suas configurações.
  */
 
-import { AgentScheduler, Notifier, type Agent } from '@agent-hub/core';
+import { 
+  AgentScheduler, 
+  Notifier, 
+  type Agent,
+  configureAIClient,
+  setUsageSaveFunction,
+  type UsageRecord
+} from '@agent-hub/core';
 import { EmailAgent, type EmailAgentConfig, type EmailAgentResult } from '@agent-hub/email-agent';
 import { LegalAgent, type LegalAgentConfig } from '@agent-hub/legal-agent';
 import { FinancialAgent, type FinancialAgentConfig } from '@agent-hub/financial-agent';
 import { StablecoinAgent, type StablecoinAgentConfig } from '@agent-hub/stablecoin-agent';
-import { getDb, users, userConfigs, agentLogs, stablecoins, stablecoinEvents, stablecoinAnomalies, supplySnapshots } from '../db/index.js';
+import { getDb, users, userConfigs, agentLogs, stablecoins, stablecoinEvents, stablecoinAnomalies, supplySnapshots, aiUsageLogs } from '../db/index.js';
 import { eq } from 'drizzle-orm';
 import { loadUserConfig, loadGlobalConfig } from '../routes/config.js';
 import { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase } from '../routes/emails.js';
 import { createAgentLogger } from './activity-logger.js';
+
+// Configura função de salvamento de uso de AI
+async function saveUsageRecords(records: UsageRecord[]): Promise<void> {
+  const db = getDb();
+  if (!db || records.length === 0) return;
+
+  try {
+    for (const record of records) {
+      await db.insert(aiUsageLogs).values({
+        userId: record.userId || null,
+        provider: record.provider,
+        model: record.model,
+        agentId: record.agentId || null,
+        operation: record.operation || null,
+        inputTokens: record.inputTokens,
+        outputTokens: record.outputTokens,
+        estimatedCost: record.estimatedCost,
+        durationMs: record.durationMs,
+        success: record.success,
+        errorMessage: record.errorMessage || null,
+        createdAt: record.createdAt,
+      });
+    }
+    console.log(`[AgentManager] ${records.length} registro(s) de uso de AI salvos`);
+  } catch (error) {
+    console.error('[AgentManager] Erro ao salvar uso de AI:', error);
+  }
+}
+
+// Inicializa o tracker de uso
+setUsageSaveFunction(saveUsageRecords);
 
 interface UserAgentSet {
   userId: string;
@@ -41,6 +79,16 @@ export class AgentManager {
     // Carrega configs
     const userConfig = await loadUserConfig(userId);
     const globalConfig = await loadGlobalConfig();
+
+    // Configura o AIClient com as credenciais do globalConfig
+    configureAIClient({
+      provider: (globalConfig.ai?.provider as 'anthropic' | 'openai') || 'anthropic',
+      anthropicApiKey: globalConfig.ai?.anthropicApiKey || process.env.ANTHROPIC_API_KEY,
+      anthropicModel: globalConfig.ai?.anthropicModel,
+      openaiApiKey: globalConfig.ai?.openaiApiKey || process.env.OPENAI_API_KEY,
+      openaiModel: globalConfig.ai?.openaiModel,
+      fallbackEnabled: globalConfig.ai?.fallbackEnabled ?? true,
+    });
 
     // Busca dados do usuário (tokens Gmail)
     const db = getDb();

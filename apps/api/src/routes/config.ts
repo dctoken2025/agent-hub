@@ -88,6 +88,15 @@ export async function loadGlobalConfig(): Promise<{
   anthropic: { apiKey: string };
   gmail: { clientId: string; clientSecret: string; redirectUri: string };
   alchemy: { apiKey: string };
+  ai: {
+    provider: string;
+    anthropicApiKey: string;
+    anthropicModel: string;
+    anthropicAdminApiKey: string;
+    openaiApiKey: string;
+    openaiModel: string;
+    fallbackEnabled: boolean;
+  };
 }> {
   const defaults = {
     anthropic: { apiKey: process.env.ANTHROPIC_API_KEY || '' },
@@ -97,6 +106,15 @@ export async function loadGlobalConfig(): Promise<{
       redirectUri: process.env.GMAIL_REDIRECT_URI || 'http://localhost:3001/api/auth/gmail/callback',
     },
     alchemy: { apiKey: process.env.ALCHEMY_API_KEY || '' },
+    ai: {
+      provider: 'anthropic',
+      anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+      anthropicModel: 'claude-sonnet-4-20250514',
+      anthropicAdminApiKey: '',
+      openaiApiKey: process.env.OPENAI_API_KEY || '',
+      openaiModel: 'gpt-4o',
+      fallbackEnabled: true,
+    },
   };
 
   const db = getDb();
@@ -119,6 +137,15 @@ export async function loadGlobalConfig(): Promise<{
       },
       alchemy: {
         apiKey: configMap.get('alchemy.apiKey') || defaults.alchemy.apiKey,
+      },
+      ai: {
+        provider: configMap.get('ai.provider') || defaults.ai.provider,
+        anthropicApiKey: configMap.get('ai.anthropicApiKey') || configMap.get('anthropic.apiKey') || defaults.ai.anthropicApiKey,
+        anthropicModel: configMap.get('ai.anthropicModel') || defaults.ai.anthropicModel,
+        anthropicAdminApiKey: configMap.get('ai.anthropicAdminApiKey') || defaults.ai.anthropicAdminApiKey,
+        openaiApiKey: configMap.get('ai.openaiApiKey') || defaults.ai.openaiApiKey,
+        openaiModel: configMap.get('ai.openaiModel') || defaults.ai.openaiModel,
+        fallbackEnabled: configMap.get('ai.fallbackEnabled') !== 'false',
       },
     };
   } catch (error) {

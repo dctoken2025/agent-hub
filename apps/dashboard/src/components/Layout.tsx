@@ -13,7 +13,8 @@ import {
   LogOut,
   User,
   Shield,
-  DollarSign
+  DollarSign,
+  Brain
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -28,6 +29,7 @@ const navigation = [
   { name: 'Agentes', href: '/agents', icon: Bot },
   { name: 'Config. Agentes', href: '/agent-config', icon: Sliders },
   { name: 'Logs', href: '/logs', icon: Activity },
+  { name: 'Uso da API', href: '/ai-usage', icon: Brain, adminOnly: true },
   { name: 'Configurações', href: '/settings', icon: Settings },
 ];
 
@@ -65,7 +67,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="p-4 space-y-1">
-          {navigation.map((item) => {
+          {navigation
+            .filter(item => !('adminOnly' in item) || !item.adminOnly || isAdmin)
+            .map((item) => {
             const isActive = location === item.href;
             return (
               <Link key={item.name} href={item.href}>
