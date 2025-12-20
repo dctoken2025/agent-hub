@@ -4,9 +4,7 @@ import {
   AlertCircle, 
   CheckCircle, 
   Clock,
-  TrendingUp,
-  Bot,
-  RefreshCw
+  Bot
 } from 'lucide-react';
 import { apiRequest } from '@/lib/utils';
 
@@ -147,39 +145,6 @@ export function Dashboard() {
               ))}
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="bg-card rounded-xl border shadow-sm">
-        <div className="p-6 border-b">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <TrendingUp className="h-5 w-5" />
-            Ações Rápidas
-          </h2>
-        </div>
-        <div className="p-6 grid gap-4 md:grid-cols-3">
-          <button 
-            onClick={() => apiRequest('/emails/fetch', { method: 'POST' })}
-            className="flex items-center justify-center gap-2 p-4 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            <RefreshCw className="h-5 w-5" />
-            Buscar Emails Agora
-          </button>
-          <button 
-            onClick={() => apiRequest('/agents/start-all', { method: 'POST' })}
-            className="flex items-center justify-center gap-2 p-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <Bot className="h-5 w-5" />
-            Iniciar Todos Agentes
-          </button>
-          <button 
-            onClick={() => apiRequest('/agents/stop-all', { method: 'POST' })}
-            className="flex items-center justify-center gap-2 p-4 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
-          >
-            <Clock className="h-5 w-5" />
-            Pausar Todos
-          </button>
         </div>
       </div>
     </div>

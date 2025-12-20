@@ -17,13 +17,44 @@ import { Terms } from './pages/Terms';
 import AgentConfig from './pages/AgentConfig';
 import { AIUsage } from './pages/AIUsage';
 import { Users } from './pages/Users';
-import { Loader2, AlertCircle, Clock } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, Timer } from 'lucide-react';
+
+// Banner de trial expirando/expirado
+function TrialBanner({ daysRemaining, isExpired }: { daysRemaining: number | null; isExpired: boolean }) {
+  if (isExpired) {
+    return (
+      <div className="fixed top-0 left-0 right-0 z-40 lg:pl-64 bg-red-500/10 border-b border-red-500/20">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+          <p className="text-sm text-red-600 dark:text-red-400">
+            <strong>Período de teste encerrado.</strong> Entre em contato para continuar usando os agentes de IA.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (daysRemaining !== null && daysRemaining > 0 && daysRemaining <= 3) {
+    return (
+      <div className="fixed top-0 left-0 right-0 z-40 lg:pl-64 bg-orange-500/10 border-b border-orange-500/20">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <Timer className="w-5 h-5 text-orange-500 flex-shrink-0" />
+          <p className="text-sm text-orange-600 dark:text-orange-400">
+            <strong>{daysRemaining === 1 ? 'Último dia' : `${daysRemaining} dias restantes`} do período de teste.</strong> Entre em contato para continuar usando após o trial.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
 
 // Banner de conta pendente
 function AccountPendingBanner() {
   return (
-    <div className="bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-3">
-      <div className="flex items-center gap-3 max-w-7xl mx-auto">
+    <div className="fixed top-0 left-0 right-0 z-40 lg:pl-64 bg-yellow-500/10 border-b border-yellow-500/20">
+      <div className="flex items-center gap-3 px-4 py-3">
         <Clock className="w-5 h-5 text-yellow-500 flex-shrink-0" />
         <p className="text-sm text-yellow-600 dark:text-yellow-400">
           <strong>Conta pendente de aprovação.</strong> Você pode explorar o sistema, mas os agentes 
@@ -37,8 +68,8 @@ function AccountPendingBanner() {
 // Banner de conta suspensa
 function AccountSuspendedBanner() {
   return (
-    <div className="bg-red-500/10 border-b border-red-500/20 px-4 py-3">
-      <div className="flex items-center gap-3 max-w-7xl mx-auto">
+    <div className="fixed top-0 left-0 right-0 z-40 lg:pl-64 bg-red-500/10 border-b border-red-500/20">
+      <div className="flex items-center gap-3 px-4 py-3">
         <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
         <p className="text-sm text-red-600 dark:text-red-400">
           <strong>Conta suspensa.</strong> Entre em contato com o administrador para mais informações.
@@ -49,7 +80,7 @@ function AccountSuspendedBanner() {
 }
 
 function AppContent() {
-  const { user, isLoading, isAdmin } = useAuth();
+  const { user, isLoading, isAdmin, isTrialExpired, trialDaysRemaining } = useAuth();
 
   // Loading inicial
   if (isLoading) {
@@ -74,14 +105,19 @@ function AppContent() {
     );
   }
 
+  // Verifica se deve mostrar banner (trial expirando, trial expirado, pendente ou suspenso)
+  const showTrialBanner = !isAdmin && (isTrialExpired || (trialDaysRemaining !== null && trialDaysRemaining <= 3 && trialDaysRemaining > 0));
+  const hasBanner = user.accountStatus === 'pending' || user.accountStatus === 'suspended' || showTrialBanner;
+
   // Autenticado - mostra app
   return (
     <DialogProvider>
       {/* Banners de status da conta */}
-      {user.accountStatus === 'pending' && <AccountPendingBanner />}
-      {user.accountStatus === 'suspended' && <AccountSuspendedBanner />}
+      {!isAdmin && showTrialBanner && <TrialBanner daysRemaining={trialDaysRemaining} isExpired={isTrialExpired} />}
+      {user.accountStatus === 'pending' && !showTrialBanner && <AccountPendingBanner />}
+      {user.accountStatus === 'suspended' && !showTrialBanner && <AccountSuspendedBanner />}
       
-      <Layout>
+      <Layout hasBanner={hasBanner}>
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/emails" component={Emails} />

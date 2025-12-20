@@ -6,8 +6,11 @@ interface User {
   email: string;
   name: string;
   role: 'admin' | 'user';
-  accountStatus: 'pending' | 'active' | 'suspended';
+  accountStatus: 'pending' | 'active' | 'suspended' | 'trial_expired';
   hasGmailConnected?: boolean;
+  trialEndsAt?: string;
+  trialDaysRemaining?: number | null;
+  isTrialExpired?: boolean;
 }
 
 interface AuthContextType {
@@ -16,6 +19,8 @@ interface AuthContextType {
   isLoading: boolean;
   isAdmin: boolean;
   isAccountActive: boolean;
+  isTrialExpired: boolean;
+  trialDaysRemaining: number | null;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -111,6 +116,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Verifica se o trial expirou (considera trial_expired ou se isTrialExpired é true)
+  const isTrialExpired = user?.accountStatus === 'trial_expired' || user?.isTrialExpired === true;
+  
+  // Conta está ativa se status é 'active' e trial não expirou
+  const isAccountActive = user?.accountStatus === 'active' && !isTrialExpired;
+
   return (
     <AuthContext.Provider
       value={{
@@ -118,7 +129,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token,
         isLoading,
         isAdmin: user?.role === 'admin',
-        isAccountActive: user?.accountStatus === 'active',
+        isAccountActive,
+        isTrialExpired,
+        trialDaysRemaining: user?.trialDaysRemaining ?? null,
         logout,
         refreshUser,
       }}

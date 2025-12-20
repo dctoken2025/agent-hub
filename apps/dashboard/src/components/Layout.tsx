@@ -37,13 +37,18 @@ const navigation = [
   { name: 'Configurações', href: '/settings', icon: Settings },
 ];
 
-export function Layout({ children }: { children: React.ReactNode }) {
+interface LayoutProps {
+  children: React.ReactNode;
+  hasBanner?: boolean;
+}
+
+export function Layout({ children, hasBanner = false }: LayoutProps) {
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout, isAdmin } = useAuth();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className={cn("min-h-screen bg-background", hasBanner && "pt-12")}>
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div 
@@ -125,7 +130,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Main content */}
       <div className="lg:pl-64">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 h-16 bg-card/80 backdrop-blur border-b">
+        <header className={cn(
+          "sticky z-30 h-16 bg-card/80 backdrop-blur border-b",
+          hasBanner ? "top-12" : "top-0"
+        )}>
           <div className="flex items-center justify-between h-full px-4">
             <div className="flex items-center gap-4">
               <button 

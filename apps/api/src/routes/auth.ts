@@ -197,15 +197,19 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         const isFirstUser = userCount.length === 0;
 
         // Cria novo usuário (sem senha - login apenas via Google)
-        // Primeiro usuário é admin e já ativo, demais ficam pendentes
+        // Primeiro usuário é admin e já ativo, demais entram em trial de 7 dias
+        const trialEndsAt = new Date();
+        trialEndsAt.setDate(trialEndsAt.getDate() + 7); // 7 dias de trial
+        
         const [newUser] = await db.insert(users).values({
           email: googleUser.email.toLowerCase(),
           passwordHash: '', // Sem senha - apenas Google login
           name: googleUser.name,
           role: isFirstUser ? 'admin' : 'user',
           gmailTokens: tokens,
-          isActive: isFirstUser, // Primeiro usuário já ativo
-          accountStatus: isFirstUser ? 'active' : 'pending', // Demais aguardam aprovação
+          isActive: true, // Todos os usuários começam ativos
+          accountStatus: isFirstUser ? 'active' : 'active', // Todos começam ativos (trial controla o acesso)
+          trialEndsAt: isFirstUser ? null : trialEndsAt, // Admin não tem trial, demais têm 7 dias
         }).returning();
 
         // Cria configurações padrão
@@ -281,14 +285,18 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       const userCount = await db.select({ id: users.id }).from(users).limit(1);
       const isFirstUser = userCount.length === 0;
 
-      // Primeiro usuário é admin e já ativo, demais ficam pendentes de aprovação
+      // Primeiro usuário é admin e já ativo, demais entram em trial de 7 dias
+      const trialEndsAt = new Date();
+      trialEndsAt.setDate(trialEndsAt.getDate() + 7); // 7 dias de trial
+      
       const [newUser] = await db.insert(users).values({
         email: email.toLowerCase(),
         passwordHash,
         name: name || email.split('@')[0],
         role: isFirstUser ? 'admin' : 'user',
-        isActive: isFirstUser,
-        accountStatus: isFirstUser ? 'active' : 'pending',
+        isActive: true,
+        accountStatus: 'active',
+        trialEndsAt: isFirstUser ? null : trialEndsAt, // Admin não tem trial
       }).returning();
 
       await db.insert(userConfigs).values({
@@ -398,6 +406,26 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(404).send({ error: 'Usuário não encontrado' });
       }
 
+      // Calcula dias restantes do trial
+      let trialDaysRemaining: number | null = null;
+      let isTrialExpired = false;
+      
+      if (user.trialEndsAt && user.role !== 'admin') {
+        const now = new Date();
+        const diffTime = user.trialEndsAt.getTime() - now.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        trialDaysRemaining = Math.max(0, diffDays);
+        isTrialExpired = diffDays <= 0;
+        
+        // Se expirou, atualiza o status
+        if (isTrialExpired && user.accountStatus === 'active') {
+          await db.update(users)
+            .set({ accountStatus: 'trial_expired' })
+            .where(eq(users.id, user.id));
+          user.accountStatus = 'trial_expired';
+        }
+      }
+
       return {
         user: {
           id: user.id,
@@ -407,6 +435,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           accountStatus: user.accountStatus,
           hasGmailConnected: !!user.gmailTokens,
           createdAt: user.createdAt,
+          trialEndsAt: user.trialEndsAt,
+          trialDaysRemaining,
+          isTrialExpired,
         },
       };
     } catch (error) {

@@ -5,7 +5,9 @@ import {
   Pause, 
   RotateCcw,
   Activity,
-  Lock
+  Lock,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 import { cn, apiRequest } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,7 +30,7 @@ interface AgentInfo {
 
 export function Agents() {
   const queryClient = useQueryClient();
-  const { isAccountActive, user } = useAuth();
+  const { isAccountActive, user, isTrialExpired, trialDaysRemaining, isAdmin } = useAuth();
   
   const { data, isLoading } = useQuery({
     queryKey: ['agents'],
@@ -74,8 +76,56 @@ export function Agents() {
 
   return (
     <div className="space-y-6">
-      {/* Aviso de conta não ativa */}
-      {!isAccountActive && (
+      {/* Banner de dias restantes do trial */}
+      {!isAdmin && trialDaysRemaining !== null && trialDaysRemaining > 0 && trialDaysRemaining <= 7 && (
+        <div className={cn(
+          "p-4 rounded-xl border",
+          trialDaysRemaining <= 2 
+            ? "bg-orange-500/10 border-orange-500/20" 
+            : "bg-blue-500/10 border-blue-500/20"
+        )}>
+          <div className="flex items-center gap-3">
+            <Clock className={cn(
+              "w-5 h-5 flex-shrink-0",
+              trialDaysRemaining <= 2 ? "text-orange-500" : "text-blue-500"
+            )} />
+            <div>
+              <p className={cn(
+                "font-medium",
+                trialDaysRemaining <= 2 ? "text-orange-600 dark:text-orange-400" : "text-blue-600 dark:text-blue-400"
+              )}>
+                {trialDaysRemaining === 1 
+                  ? 'Último dia do período de teste!' 
+                  : `${trialDaysRemaining} dias restantes do período de teste`
+                }
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Entre em contato para continuar usando os agentes após o período de teste.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Aviso de trial expirado */}
+      {isTrialExpired && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-red-600 dark:text-red-400">
+                Período de teste encerrado
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Seu período de teste de 7 dias expirou. Entre em contato para continuar usando os agentes.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Aviso de conta pendente/suspensa (não trial) */}
+      {!isAccountActive && !isTrialExpired && (
         <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
           <div className="flex items-center gap-3">
             <Lock className="w-5 h-5 text-yellow-500 flex-shrink-0" />
@@ -105,10 +155,10 @@ export function Agents() {
         <div className="flex gap-2">
           <button
             onClick={() => apiRequest('/agents/start-all', { method: 'POST' })}
-            disabled={!isAccountActive}
+            disabled={!isAccountActive || isTrialExpired}
             className={cn(
               "flex items-center gap-2 px-4 py-2 rounded-lg transition-colors",
-              isAccountActive 
+              isAccountActive && !isTrialExpired
                 ? "bg-green-600 text-white hover:bg-green-700" 
                 : "bg-gray-400 text-gray-200 cursor-not-allowed"
             )}
@@ -219,24 +269,24 @@ export function Agents() {
                 ) : (
                   <button
                     onClick={() => startMutation.mutate(agent.config.id)}
-                    disabled={startMutation.isPending || !isAccountActive}
+                    disabled={startMutation.isPending || !isAccountActive || isTrialExpired}
                     className={cn(
                       "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg transition-colors disabled:opacity-50",
-                      isAccountActive 
+                      isAccountActive && !isTrialExpired
                         ? "bg-green-600 text-white hover:bg-green-700" 
                         : "bg-gray-400 text-gray-200 cursor-not-allowed"
                     )}
                   >
-                    {isAccountActive ? <Play className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                    {isAccountActive && !isTrialExpired ? <Play className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                     Iniciar
                   </button>
                 )}
                 <button
                   onClick={() => runOnceMutation.mutate(agent.config.id)}
-                  disabled={runOnceMutation.isPending || !isAccountActive}
+                  disabled={runOnceMutation.isPending || !isAccountActive || isTrialExpired}
                   className={cn(
                     "flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-50",
-                    isAccountActive 
+                    isAccountActive && !isTrialExpired
                       ? "bg-primary text-primary-foreground hover:bg-primary/90" 
                       : "bg-gray-400 text-gray-200 cursor-not-allowed"
                   )}

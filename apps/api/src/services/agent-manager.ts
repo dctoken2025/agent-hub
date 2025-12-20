@@ -16,11 +16,12 @@ import {
 import { EmailAgent, type EmailAgentConfig, type EmailAgentResult } from '@agent-hub/email-agent';
 import { LegalAgent, type LegalAgentConfig } from '@agent-hub/legal-agent';
 import { FinancialAgent, type FinancialAgentConfig } from '@agent-hub/financial-agent';
+import { TaskAgent } from '@agent-hub/task-agent';
 import { StablecoinAgent, type StablecoinAgentConfig } from '@agent-hub/stablecoin-agent';
 import { getDb, users, userConfigs, agentLogs, stablecoins, stablecoinEvents, stablecoinAnomalies, supplySnapshots, aiUsageLogs } from '../db/index.js';
 import { eq } from 'drizzle-orm';
 import { loadUserConfig, loadGlobalConfig } from '../routes/config.js';
-import { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase } from '../routes/emails.js';
+import { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase, saveActionItemsToDatabase } from '../routes/emails.js';
 import { createAgentLogger } from './activity-logger.js';
 
 // Configura função de salvamento de uso de AI
@@ -60,6 +61,7 @@ interface UserAgentSet {
   emailAgent?: EmailAgent;
   legalAgent?: LegalAgent;
   financialAgent?: FinancialAgent;
+  taskAgent?: TaskAgent;
   stablecoinAgent?: StablecoinAgent;
 }
 
@@ -274,6 +276,42 @@ export class AgentManager {
     // Injeta Legal Agent no Email Agent também
     if (agentSet.legalAgent && agentSet.emailAgent) {
       agentSet.emailAgent.setLegalAgent(agentSet.legalAgent);
+    }
+
+    // ===========================================
+    // Inicializa Task Agent
+    // ===========================================
+    try {
+      const taskAgent = new TaskAgent(
+        {
+          id: `task-agent-${userId}`,
+          name: 'Task Agent',
+          description: 'Agente de extração de tarefas e action items',
+          enabled: true,
+          schedule: {
+            type: 'manual',
+          },
+        },
+        {
+          // Configuração padrão - pode ser customizada futuramente
+          generateSuggestedReply: true,
+          urgentDaysThreshold: 3,
+        }
+      );
+
+      // Registra eventos para logging
+      this.setupAgentLogging(taskAgent, userId);
+
+      agentSet.taskAgent = taskAgent;
+
+      // Injeta no Email Agent
+      if (agentSet.emailAgent) {
+        agentSet.emailAgent.setTaskAgent(taskAgent);
+      }
+
+      console.log(`[AgentManager] ✅ Task Agent iniciado para usuário ${userId}`);
+    } catch (error) {
+      console.error(`[AgentManager] Erro ao inicializar Task Agent:`, error);
     }
 
     // ===========================================
@@ -492,6 +530,9 @@ export class AgentManager {
           }
           if (emailData?.financialItems && emailData.financialItems.length > 0) {
             await saveFinancialItemsToDatabase(emailData.financialItems, userId);
+          }
+          if (emailData?.actionItems && emailData.actionItems.length > 0) {
+            await saveActionItemsToDatabase(emailData.actionItems, userId);
           }
         } else if (agentId.includes('legal-agent')) {
           const legalData = data as { 

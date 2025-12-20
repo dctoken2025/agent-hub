@@ -1,6 +1,7 @@
 import { Agent, type AgentConfig, type AgentResult, Notifier } from '@agent-hub/core';
 import { LegalAgent, type LegalAgentConfig, type ContractAnalysis } from '@agent-hub/legal-agent';
 import { FinancialAgent, type FinancialAgentConfig, type FinancialItem } from '@agent-hub/financial-agent';
+import { TaskAgent, type ActionItem } from '@agent-hub/task-agent';
 import { GmailClient } from './gmail-client.js';
 import { EmailClassifier, type ClassificationRule } from './email-classifier.js';
 import type { Email, EmailAgentConfig, ClassifiedEmail, EmailPriority } from './types.js';
@@ -19,6 +20,8 @@ export interface EmailAgentResult {
   legalAnalyses: ContractAnalysis[];
   financialItemsDetected: number;
   financialItems: FinancialItem[];
+  actionItemsDetected: number;
+  actionItems: ActionItem[];
 }
 
 /**
@@ -34,6 +37,7 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
   private notifier?: Notifier;
   private legalAgent?: LegalAgent;
   private financialAgent?: FinancialAgent;
+  private taskAgent?: TaskAgent;
   private processedLabelId?: string;
 
   constructor(
@@ -127,6 +131,14 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
   setFinancialAgent(financialAgent: FinancialAgent): void {
     this.financialAgent = financialAgent;
     console.log('[EmailAgent] Financial Agent externo injetado');
+  }
+
+  /**
+   * Injeta um Task Agent externo para análise de action items.
+   */
+  setTaskAgent(taskAgent: TaskAgent): void {
+    this.taskAgent = taskAgent;
+    console.log('[EmailAgent] Task Agent externo injetado');
   }
 
   /**
@@ -234,8 +246,10 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
       const classifiedEmails: ClassifiedEmail[] = [];
       const legalAnalyses: ContractAnalysis[] = [];
       const financialItems: FinancialItem[] = [];
+      const actionItems: ActionItem[] = [];
       let contractsDetected = 0;
       let financialItemsDetected = 0;
+      let actionItemsDetected = 0;
 
       const counts: EmailAgentResult['classifications'] = {
         urgent: 0,
@@ -286,6 +300,18 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
             }
           }
 
+          // Verifica se email contém action items (tarefas, perguntas, pendências)
+          if (this.hasActionItems(email)) {
+            console.log(`[EmailAgent] 📋 Action items detectados em: ${email.subject}`);
+
+            // Processa com Task Agent
+            const tasks = await this.processWithTaskAgent(email);
+            if (tasks.length > 0) {
+              actionItems.push(...tasks);
+              actionItemsDetected += tasks.length;
+            }
+          }
+
           // Adiciona label "AgentHub-Processado" para não processar novamente
           // NÃO marca como lido - mantém o estado original no Gmail
           try {
@@ -315,6 +341,8 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
         legalAnalyses,
         financialItemsDetected,
         financialItems,
+        actionItemsDetected,
+        actionItems,
       };
 
       // Atualiza lastProcessedAt com a data/hora atual (timezone Brasil)
@@ -469,6 +497,78 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
     const isFromFinancialSender = financialSenders.some(s => fromEmail.includes(s));
 
     return hasFinancialIndicator || isFromFinancialSender;
+  }
+
+  /**
+   * Verifica se um email contém action items (tarefas, perguntas, pendências).
+   */
+  private hasActionItems(email: Email): boolean {
+    const content = `${email.subject} ${email.body}`.toLowerCase();
+
+    // Indicadores de perguntas e solicitações
+    const actionIndicators = [
+      // Perguntas diretas
+      'como estamos', 'qual o status', 'podem confirmar', 'poderiam confirmar',
+      'tudo ok', 'tudo certo', 'correto?', 'certo?',
+      // Solicitações
+      'gostaria de saber', 'preciso saber', 'favor informar', 'me informe',
+      'solicito', 'peço que', 'por favor',
+      // Prazos
+      'até quando', 'prazo', 'deadline', 'data limite',
+      'previsto para', 'previsão',
+      // Pendências
+      'pendências', 'pendente', 'falta', 'aguardando',
+      'já temos', 'já recebemos',
+      // Ações
+      'próximos passos', 'action items', 'tarefas',
+      'verificar', 'confirmar', 'providenciar',
+    ];
+
+    // Verifica indicadores
+    const hasIndicator = actionIndicators.some(indicator =>
+      content.includes(indicator)
+    );
+
+    // Verifica se tem perguntas (pelo menos uma ?)
+    const hasQuestions = (content.match(/\?/g) || []).length >= 1;
+
+    // Verifica se tem listas numeradas ou com bullets
+    const hasBullets = /[•\-\*]\s+\w|^\d+[\.\)]\s+/m.test(email.body);
+
+    return hasIndicator || (hasQuestions && hasBullets);
+  }
+
+  /**
+   * Processa email com Task Agent para extração de action items.
+   */
+  private async processWithTaskAgent(email: Email): Promise<ActionItem[]> {
+    console.log(`[EmailAgent] 📋 Iniciando processamento com Task Agent para: ${email.subject}`);
+
+    if (!this.taskAgent) {
+      console.log('[EmailAgent] ⚠️ Task Agent não inicializado');
+      return [];
+    }
+
+    try {
+      const result = await this.taskAgent.processEmail({
+        emailId: email.id,
+        threadId: email.threadId,
+        emailSubject: email.subject,
+        emailBody: email.body,
+        emailFrom: email.from.email,
+        emailDate: email.date,
+      });
+
+      if (result && result.items.length > 0) {
+        console.log(`[EmailAgent] ✅ ${result.items.length} action item(s) extraído(s)`);
+        return result.items;
+      }
+
+      return [];
+    } catch (error) {
+      console.error('[EmailAgent] Erro ao processar com Task Agent:', error);
+      return [];
+    }
   }
 
   /**

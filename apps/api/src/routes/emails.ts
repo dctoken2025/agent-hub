@@ -1,11 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { getDb, classifiedEmails, legalAnalyses, financialItems, users } from '../db/index.js';
+import { getDb, classifiedEmails, legalAnalyses, financialItems, actionItems, users } from '../db/index.js';
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
 import { loadGlobalConfig } from './config.js';
 import { getAgentManager } from '../services/agent-manager.js';
 import type { ClassifiedEmail, ContractAnalysis } from '@agent-hub/email-agent';
 import type { FinancialItem } from '@agent-hub/financial-agent';
+import type { ActionItem } from '@agent-hub/task-agent';
 
 // Função para salvar emails no banco (com userId)
 async function saveEmailsToDatabase(emails: ClassifiedEmail[], userId: string): Promise<void> {
@@ -238,6 +239,90 @@ async function saveFinancialItemsToDatabase(
 
   console.log(
     `[EmailRoutes] Total de itens financeiros: ${savedCount} novos, ${skippedCount} já existentes`
+  );
+}
+
+// Função para salvar action items no banco (com userId)
+async function saveActionItemsToDatabase(
+  items: ActionItem[],
+  userId: string
+): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    console.log('[EmailRoutes] Banco não disponível para salvar action items');
+    return;
+  }
+
+  let savedCount = 0;
+  let skippedCount = 0;
+
+  for (const item of items) {
+    try {
+      // Verifica se já existe item com mesmo emailId e título para este usuário
+      const existing = await db.execute(sql.raw(`
+        SELECT id FROM action_items 
+        WHERE user_id = '${userId}' 
+          AND email_id = '${item.emailId}'
+          AND title = '${item.title.replace(/'/g, "''")}'
+        LIMIT 1
+      `));
+
+      if ((existing as any[]).length > 0) {
+        skippedCount++;
+        continue;
+      }
+
+      // Insere novo action item
+      await db.insert(actionItems).values({
+        userId,
+        emailId: item.emailId,
+        threadId: item.threadId || null,
+        emailSubject: item.emailSubject,
+        emailFrom: item.emailFrom,
+        emailDate: item.emailDate ? new Date(item.emailDate) : null,
+        // Stakeholder
+        stakeholderName: item.stakeholder.name,
+        stakeholderCompany: item.stakeholder.company || null,
+        stakeholderRole: item.stakeholder.role || null,
+        stakeholderEmail: item.stakeholder.email || null,
+        stakeholderPhone: item.stakeholder.phone || null,
+        stakeholderImportance: item.stakeholder.importance,
+        // Projeto
+        projectName: item.project?.name || null,
+        projectCode: item.project?.code || null,
+        projectType: item.project?.type || null,
+        // Tarefa
+        title: item.title,
+        description: item.description,
+        originalText: item.originalText,
+        category: item.category,
+        // Prazo
+        deadlineDate: item.deadline?.date ? new Date(item.deadline.date) : null,
+        deadlineRelative: item.deadline?.relative || null,
+        deadlineIsExplicit: item.deadline?.isExplicit || false,
+        deadlineDependsOn: item.deadline?.dependsOn || null,
+        deadlineUrgency: item.deadline?.urgencyLevel || null,
+        // Status
+        status: 'pending',
+        // Prioridade
+        priority: item.priority,
+        priorityReason: item.priorityReason || null,
+        // Sugestões
+        suggestedResponse: item.suggestedResponse || null,
+        suggestedAction: item.suggestedAction || null,
+        relatedDocuments: item.relatedDocuments ? JSON.stringify(item.relatedDocuments) : null,
+        blockedByExternal: item.blockedByExternal || null,
+        // Confiança
+        confidence: item.confidence,
+      });
+      savedCount++;
+    } catch (error) {
+      console.error(`[EmailRoutes] Erro ao salvar action item "${item.title}":`, error);
+    }
+  }
+
+  console.log(
+    `[EmailRoutes] Total de action items: ${savedCount} novos, ${skippedCount} já existentes`
   );
 }
 
@@ -764,4 +849,4 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
 };
 
 // Exporta funções helper para uso em outros lugares
-export { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase };
+export { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase, saveActionItemsToDatabase };

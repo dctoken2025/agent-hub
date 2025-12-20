@@ -6,7 +6,7 @@ import { loadUserConfig } from './config.js';
 import { getAgentManager } from '../services/agent-manager.js';
 
 // Helper para verificar se o usuário pode ativar agentes
-async function checkAccountActive(userId: string): Promise<{ canActivate: boolean; message?: string }> {
+async function checkAccountActive(userId: string): Promise<{ canActivate: boolean; message?: string; code?: string }> {
   const db = getDb();
   if (!db) {
     return { canActivate: false, message: 'Banco de dados não disponível' };
@@ -15,6 +15,8 @@ async function checkAccountActive(userId: string): Promise<{ canActivate: boolea
   const [user] = await db.select({
     accountStatus: users.accountStatus,
     email: users.email,
+    trialEndsAt: users.trialEndsAt,
+    role: users.role,
   })
   .from(users)
   .where(eq(users.id, userId));
@@ -23,15 +25,40 @@ async function checkAccountActive(userId: string): Promise<{ canActivate: boolea
     return { canActivate: false, message: 'Usuário não encontrado' };
   }
 
+  // Admin sempre pode usar
+  if (user.role === 'admin') {
+    return { canActivate: true };
+  }
+
+  // Verifica status da conta
   if (user.accountStatus !== 'active') {
     const statusMessages: Record<string, string> = {
       pending: 'Sua conta está aguardando aprovação do administrador. Entre em contato para liberar o acesso aos agentes.',
       suspended: 'Sua conta foi suspensa. Entre em contato com o administrador.',
+      trial_expired: 'Seu período de teste expirou. Entre em contato para continuar usando os agentes.',
     };
     return { 
       canActivate: false, 
-      message: statusMessages[user.accountStatus] || 'Conta não está ativa' 
+      message: statusMessages[user.accountStatus] || 'Conta não está ativa',
+      code: 'ACCOUNT_NOT_ACTIVE',
     };
+  }
+
+  // Verifica se o trial expirou
+  if (user.trialEndsAt) {
+    const now = new Date();
+    if (now > user.trialEndsAt) {
+      // Atualiza status para trial_expired
+      await db.update(users)
+        .set({ accountStatus: 'trial_expired' })
+        .where(eq(users.id, userId));
+      
+      return { 
+        canActivate: false, 
+        message: 'Seu período de teste de 7 dias expirou. Entre em contato para continuar usando os agentes.',
+        code: 'TRIAL_EXPIRED',
+      };
+    }
   }
 
   return { canActivate: true };
