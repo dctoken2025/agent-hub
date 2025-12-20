@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { getDb, agentLogs, legalAnalyses, users } from '../db/index.js';
+import { getDb, agentLogs, users } from '../db/index.js';
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
 import { loadUserConfig } from './config.js';
@@ -142,20 +142,31 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
 
       if (db) {
         try {
+          // Conta execuções do agent_logs para consistência
           const countResult = await db
             .select({ count: sql<number>`count(*)::int` })
-            .from(legalAnalyses)
-            .where(eq(legalAnalyses.userId, userId));
+            .from(agentLogs)
+            .where(
+              and(
+                eq(agentLogs.userId, userId),
+                eq(agentLogs.agentId, `legal-agent-${userId}`)
+              )
+            );
 
           const lastRunResult = await db
-            .select({ analyzedAt: legalAnalyses.analyzedAt })
-            .from(legalAnalyses)
-            .where(eq(legalAnalyses.userId, userId))
-            .orderBy(desc(legalAnalyses.analyzedAt))
+            .select({ createdAt: agentLogs.createdAt })
+            .from(agentLogs)
+            .where(
+              and(
+                eq(agentLogs.userId, userId),
+                eq(agentLogs.agentId, `legal-agent-${userId}`)
+              )
+            )
+            .orderBy(desc(agentLogs.createdAt))
             .limit(1);
 
           dbRunCount = countResult[0]?.count || 0;
-          dbLastRun = lastRunResult[0]?.analyzedAt || null;
+          dbLastRun = lastRunResult[0]?.createdAt || null;
         } catch {
           // Ignora erros
         }
@@ -172,7 +183,7 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
           },
         },
         status: legalAgentRunning ? 'running' : 'stopped',
-        runCount: dbRunCount, // Sempre usa o valor persistido do banco
+        runCount: dbRunCount,
         lastRun: dbLastRun,
       });
     }
@@ -187,21 +198,31 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
 
       if (db) {
         try {
-          const { financialItems } = await import('../db/schema.js');
+          // Conta execuções do agent_logs para consistência
           const countResult = await db
             .select({ count: sql<number>`count(*)::int` })
-            .from(financialItems)
-            .where(eq(financialItems.userId, userId));
+            .from(agentLogs)
+            .where(
+              and(
+                eq(agentLogs.userId, userId),
+                eq(agentLogs.agentId, `financial-agent-${userId}`)
+              )
+            );
 
           const lastRunResult = await db
-            .select({ analyzedAt: financialItems.analyzedAt })
-            .from(financialItems)
-            .where(eq(financialItems.userId, userId))
-            .orderBy(desc(financialItems.analyzedAt))
+            .select({ createdAt: agentLogs.createdAt })
+            .from(agentLogs)
+            .where(
+              and(
+                eq(agentLogs.userId, userId),
+                eq(agentLogs.agentId, `financial-agent-${userId}`)
+              )
+            )
+            .orderBy(desc(agentLogs.createdAt))
             .limit(1);
 
           dbRunCount = countResult[0]?.count || 0;
-          dbLastRun = lastRunResult[0]?.analyzedAt || null;
+          dbLastRun = lastRunResult[0]?.createdAt || null;
         } catch {
           // Ignora erros
         }
@@ -218,7 +239,7 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
           },
         },
         status: financialAgentRunning ? 'running' : 'stopped',
-        runCount: dbRunCount, // Sempre usa o valor persistido do banco
+        runCount: dbRunCount,
         lastRun: dbLastRun,
       });
     }
