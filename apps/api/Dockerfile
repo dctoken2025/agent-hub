@@ -31,6 +31,7 @@ COPY --from=builder /app/packages/core/package.json ./packages/core/package.json
 COPY --from=builder /app/packages/email-agent/package.json ./packages/email-agent/package.json
 COPY --from=builder /app/packages/legal-agent/package.json ./packages/legal-agent/package.json
 COPY --from=builder /app/packages/financial-agent/package.json ./packages/financial-agent/package.json
+COPY --from=builder /app/packages/task-agent/package.json ./packages/task-agent/package.json
 COPY --from=builder /app/packages/stablecoin-agent/package.json ./packages/stablecoin-agent/package.json
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 
@@ -39,11 +40,12 @@ COPY --from=builder /app/packages/core/dist ./packages/core/dist
 COPY --from=builder /app/packages/email-agent/dist ./packages/email-agent/dist
 COPY --from=builder /app/packages/legal-agent/dist ./packages/legal-agent/dist
 COPY --from=builder /app/packages/financial-agent/dist ./packages/financial-agent/dist
+COPY --from=builder /app/packages/task-agent/dist ./packages/task-agent/dist
 COPY --from=builder /app/packages/stablecoin-agent/dist ./packages/stablecoin-agent/dist
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
 # Install production dependencies only
-RUN npm ci --omit=dev --workspace=@agent-hub/api --workspace=@agent-hub/core --workspace=@agent-hub/email-agent --workspace=@agent-hub/legal-agent --workspace=@agent-hub/financial-agent --workspace=@agent-hub/stablecoin-agent
+RUN npm ci --omit=dev --workspace=@agent-hub/api --workspace=@agent-hub/core --workspace=@agent-hub/email-agent --workspace=@agent-hub/legal-agent --workspace=@agent-hub/financial-agent --workspace=@agent-hub/task-agent --workspace=@agent-hub/stablecoin-agent
 
 # Set environment
 ENV NODE_ENV=production
