@@ -46,7 +46,7 @@ function AccountSuspendedBanner() {
 }
 
 function AppContent() {
-  const { user, isLoading, isAdmin, isAccountActive } = useAuth();
+  const { user, isLoading, isAdmin } = useAuth();
 
   // Loading inicial
   if (isLoading) {

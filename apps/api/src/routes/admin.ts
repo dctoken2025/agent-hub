@@ -11,7 +11,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   // ===========================================
   // Listar todos os usuários
   // ===========================================
-  app.get('/users', async (request, reply) => {
+  app.get('/users', async (_request, reply) => {
     const db = getDb();
     if (!db) {
       return reply.status(500).send({ error: 'Banco de dados não disponível' });
