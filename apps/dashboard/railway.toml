@@ -1,7 +1,10 @@
 [build]
 builder = "dockerfile"
 dockerfilePath = "apps/dashboard/Dockerfile"
+watchPatterns = ["apps/dashboard/**"]
 
 [deploy]
+healthcheckPath = "/"
+healthcheckTimeout = 100
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
