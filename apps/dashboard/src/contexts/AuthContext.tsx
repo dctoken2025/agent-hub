@@ -6,6 +6,7 @@ interface User {
   email: string;
   name: string;
   role: 'admin' | 'user';
+  accountStatus: 'pending' | 'active' | 'suspended';
   hasGmailConnected?: boolean;
 }
 
@@ -14,6 +15,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAdmin: boolean;
+  isAccountActive: boolean;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -116,6 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token,
         isLoading,
         isAdmin: user?.role === 'admin',
+        isAccountActive: user?.accountStatus === 'active',
         logout,
         refreshUser,
       }}

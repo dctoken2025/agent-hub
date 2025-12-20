@@ -14,7 +14,8 @@ import {
   User,
   Shield,
   DollarSign,
-  Brain
+  Brain,
+  Users
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -29,6 +30,7 @@ const navigation = [
   { name: 'Agentes', href: '/agents', icon: Bot },
   { name: 'Config. Agentes', href: '/agent-config', icon: Sliders },
   { name: 'Logs', href: '/logs', icon: Activity },
+  { name: 'Usuários', href: '/users', icon: Users, adminOnly: true },
   { name: 'Uso da API', href: '/ai-usage', icon: Brain, adminOnly: true },
   { name: 'Configurações', href: '/settings', icon: Settings },
 ];

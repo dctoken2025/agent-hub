@@ -17,6 +17,7 @@ import { legalRoutes } from './routes/legal.js';
 import { stablecoinRoutes } from './routes/stablecoins.js';
 import { financialRoutes } from './routes/financial.js';
 import { aiUsageRoutes } from './routes/ai-usage.js';
+import { adminRoutes } from './routes/admin.js';
 import { getAgentManager } from './services/agent-manager.js';
 
 // Inicializa banco de dados
@@ -58,6 +59,7 @@ async function main() {
   await app.register(stablecoinRoutes, { prefix: '/api/stablecoins' });
   await app.register(financialRoutes, { prefix: '/api/financial' });
   await app.register(aiUsageRoutes, { prefix: '/api/ai-usage' });
+  await app.register(adminRoutes, { prefix: '/api/admin' });
 
   // Health check (público)
   app.get('/api/health', async () => {

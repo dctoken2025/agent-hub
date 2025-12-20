@@ -4,9 +4,11 @@ import {
   Play, 
   Pause, 
   RotateCcw,
-  Activity
+  Activity,
+  Lock
 } from 'lucide-react';
 import { cn, apiRequest } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface AgentInfo {
   config: {
@@ -26,6 +28,7 @@ interface AgentInfo {
 
 export function Agents() {
   const queryClient = useQueryClient();
+  const { isAccountActive, user } = useAuth();
   
   const { data, isLoading } = useQuery({
     queryKey: ['agents'],
@@ -71,6 +74,26 @@ export function Agents() {
 
   return (
     <div className="space-y-6">
+      {/* Aviso de conta não ativa */}
+      {!isAccountActive && (
+        <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
+          <div className="flex items-center gap-3">
+            <Lock className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-yellow-600 dark:text-yellow-400">
+                Agentes bloqueados
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {user?.accountStatus === 'pending' 
+                  ? 'Sua conta está aguardando aprovação do administrador para ativar os agentes.'
+                  : 'Sua conta está suspensa. Entre em contato com o administrador.'
+                }
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -82,7 +105,13 @@ export function Agents() {
         <div className="flex gap-2">
           <button
             onClick={() => apiRequest('/agents/start-all', { method: 'POST' })}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            disabled={!isAccountActive}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg transition-colors",
+              isAccountActive 
+                ? "bg-green-600 text-white hover:bg-green-700" 
+                : "bg-gray-400 text-gray-200 cursor-not-allowed"
+            )}
           >
             <Play className="h-4 w-4" />
             Iniciar Todos
@@ -190,17 +219,27 @@ export function Agents() {
                 ) : (
                   <button
                     onClick={() => startMutation.mutate(agent.config.id)}
-                    disabled={startMutation.isPending}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                    disabled={startMutation.isPending || !isAccountActive}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg transition-colors disabled:opacity-50",
+                      isAccountActive 
+                        ? "bg-green-600 text-white hover:bg-green-700" 
+                        : "bg-gray-400 text-gray-200 cursor-not-allowed"
+                    )}
                   >
-                    <Play className="h-4 w-4" />
+                    {isAccountActive ? <Play className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                     Iniciar
                   </button>
                 )}
                 <button
                   onClick={() => runOnceMutation.mutate(agent.config.id)}
-                  disabled={runOnceMutation.isPending}
-                  className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  disabled={runOnceMutation.isPending || !isAccountActive}
+                  className={cn(
+                    "flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-50",
+                    isAccountActive 
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90" 
+                      : "bg-gray-400 text-gray-200 cursor-not-allowed"
+                  )}
                 >
                   <RotateCcw className="h-4 w-4" />
                   Executar

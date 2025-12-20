@@ -197,13 +197,15 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         const isFirstUser = userCount.length === 0;
 
         // Cria novo usuário (sem senha - login apenas via Google)
+        // Primeiro usuário é admin e já ativo, demais ficam pendentes
         const [newUser] = await db.insert(users).values({
           email: googleUser.email.toLowerCase(),
           passwordHash: '', // Sem senha - apenas Google login
           name: googleUser.name,
           role: isFirstUser ? 'admin' : 'user',
           gmailTokens: tokens,
-          isActive: true,
+          isActive: isFirstUser, // Primeiro usuário já ativo
+          accountStatus: isFirstUser ? 'active' : 'pending', // Demais aguardam aprovação
         }).returning();
 
         // Cria configurações padrão
@@ -279,12 +281,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       const userCount = await db.select({ id: users.id }).from(users).limit(1);
       const isFirstUser = userCount.length === 0;
 
+      // Primeiro usuário é admin e já ativo, demais ficam pendentes de aprovação
       const [newUser] = await db.insert(users).values({
         email: email.toLowerCase(),
         passwordHash,
         name: name || email.split('@')[0],
         role: isFirstUser ? 'admin' : 'user',
-        isActive: true,
+        isActive: isFirstUser,
+        accountStatus: isFirstUser ? 'active' : 'pending',
       }).returning();
 
       await db.insert(userConfigs).values({
@@ -400,6 +404,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           email: user.email,
           name: user.name,
           role: user.role,
+          accountStatus: user.accountStatus,
           hasGmailConnected: !!user.gmailTokens,
           createdAt: user.createdAt,
         },

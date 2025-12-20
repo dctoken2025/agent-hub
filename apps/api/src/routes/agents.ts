@@ -1,9 +1,41 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { getDb, agentLogs, legalAnalyses } from '../db/index.js';
+import { getDb, agentLogs, legalAnalyses, users } from '../db/index.js';
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
 import { loadUserConfig } from './config.js';
 import { getAgentManager } from '../services/agent-manager.js';
+
+// Helper para verificar se o usuário pode ativar agentes
+async function checkAccountActive(userId: string): Promise<{ canActivate: boolean; message?: string }> {
+  const db = getDb();
+  if (!db) {
+    return { canActivate: false, message: 'Banco de dados não disponível' };
+  }
+
+  const [user] = await db.select({
+    accountStatus: users.accountStatus,
+    email: users.email,
+  })
+  .from(users)
+  .where(eq(users.id, userId));
+
+  if (!user) {
+    return { canActivate: false, message: 'Usuário não encontrado' };
+  }
+
+  if (user.accountStatus !== 'active') {
+    const statusMessages: Record<string, string> = {
+      pending: 'Sua conta está aguardando aprovação do administrador. Entre em contato para liberar o acesso aos agentes.',
+      suspended: 'Sua conta foi suspensa. Entre em contato com o administrador.',
+    };
+    return { 
+      canActivate: false, 
+      message: statusMessages[user.accountStatus] || 'Conta não está ativa' 
+    };
+  }
+
+  return { canActivate: true };
+}
 
 export const agentRoutes: FastifyPluginAsync = async (app) => {
   // Lista todos os agentes do usuário atual
@@ -248,8 +280,17 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       try {
         const userId = request.user!.id;
-        const agentManager = getAgentManager();
 
+        // Verifica se a conta está ativa
+        const accountCheck = await checkAccountActive(userId);
+        if (!accountCheck.canActivate) {
+          return reply.status(403).send({ 
+            error: accountCheck.message,
+            code: 'ACCOUNT_NOT_ACTIVE'
+          });
+        }
+
+        const agentManager = getAgentManager();
         await agentManager.startAgent(userId, request.params.id);
 
         return { success: true, message: 'Agente iniciado' };
@@ -286,6 +327,16 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       try {
         const userId = request.user!.id;
+
+        // Verifica se a conta está ativa
+        const accountCheck = await checkAccountActive(userId);
+        if (!accountCheck.canActivate) {
+          return reply.status(403).send({ 
+            error: accountCheck.message,
+            code: 'ACCOUNT_NOT_ACTIVE'
+          });
+        }
+
         const agentManager = getAgentManager();
         const agentId = request.params.id;
 
@@ -303,8 +354,18 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
   );
 
   // Inicia todos os agentes do usuário
-  app.post('/start-all', { preHandler: [authMiddleware] }, async (request) => {
+  app.post('/start-all', { preHandler: [authMiddleware] }, async (request, reply) => {
     const userId = request.user!.id;
+
+    // Verifica se a conta está ativa
+    const accountCheck = await checkAccountActive(userId);
+    if (!accountCheck.canActivate) {
+      return reply.status(403).send({ 
+        error: accountCheck.message,
+        code: 'ACCOUNT_NOT_ACTIVE'
+      });
+    }
+
     const agentManager = getAgentManager();
 
     // Salva estado de "ativo" no banco para auto-start após reinício
