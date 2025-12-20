@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Bot, 
@@ -6,10 +7,13 @@ import {
   Activity,
   Lock,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  GraduationCap,
+  Brain
 } from 'lucide-react';
 import { cn, apiRequest } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { TeachAgentModal } from '@/components/TeachAgentModal';
 
 interface AgentInfo {
   config: {
@@ -30,11 +34,31 @@ interface AgentInfo {
 export function Agents() {
   const queryClient = useQueryClient();
   const { isAccountActive, user, isTrialExpired, trialDaysRemaining, isAdmin } = useAuth();
+  const [teachingAgent, setTeachingAgent] = useState<{ id: string; name: string } | null>(null);
   
   const { data, isLoading } = useQuery({
     queryKey: ['agents'],
     queryFn: () => apiRequest<{ agents: AgentInfo[] }>('/agents'),
     refetchInterval: 5000,
+  });
+
+  // Busca contextos de todos os agentes
+  const { data: contextsData } = useQuery({
+    queryKey: ['agent-contexts'],
+    queryFn: async () => {
+      const agentIds = ['email-agent', 'legal-agent', 'financial-agent', 'stablecoin-agent', 'task-agent'];
+      const results = await Promise.all(
+        agentIds.map(id => 
+          apiRequest<{ agentId: string; hasContext: boolean }>(`/agent-teaching/context/${id}`)
+            .catch(() => ({ agentId: id, hasContext: false }))
+        )
+      );
+      return results.reduce((acc, item) => {
+        acc[item.agentId] = item.hasContext;
+        return acc;
+      }, {} as Record<string, boolean>);
+    },
+    refetchInterval: 30000,
   });
 
   const startAllMutation = useMutation({
@@ -250,10 +274,44 @@ export function Agents() {
                 </div>
               </div>
 
+              {/* Botão Ensinar Agente */}
+              <button
+                onClick={() => setTeachingAgent({ id: agent.config.id, name: agent.config.name })}
+                className={cn(
+                  "w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-all font-medium",
+                  contextsData?.[agent.config.id]
+                    ? "bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 hover:bg-violet-500/20"
+                    : "bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:from-violet-700 hover:to-purple-700"
+                )}
+              >
+                {contextsData?.[agent.config.id] ? (
+                  <>
+                    <Brain className="h-4 w-4" />
+                    Contexto Configurado
+                  </>
+                ) : (
+                  <>
+                    <GraduationCap className="h-4 w-4" />
+                    Ensinar Agente
+                  </>
+                )}
+              </button>
+
             </div>
           ))}
         </div>
       )}
+
+      {/* Modal de Ensino do Agente */}
+      <TeachAgentModal
+        isOpen={!!teachingAgent}
+        onClose={() => {
+          setTeachingAgent(null);
+          queryClient.invalidateQueries({ queryKey: ['agent-contexts'] });
+        }}
+        agentId={teachingAgent?.id || ''}
+        agentName={teachingAgent?.name || ''}
+      />
     </div>
   );
 }

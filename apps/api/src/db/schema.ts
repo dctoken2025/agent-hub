@@ -48,6 +48,15 @@ export const userConfigs = pgTable('user_configs', {
     unreadOnly: true,
     customRules: [],
   }),
+  
+  // Contexto personalizado de cada agente (gerado via "Ensinar Agente")
+  agentContexts: jsonb('agent_contexts').default({
+    email: null,
+    legal: null,
+    financial: null,
+    stablecoin: null,
+    task: null,
+  }),
   legalAgentConfig: jsonb('legal_agent_config').default({
     enabled: true,
     autoAnalyze: true,
@@ -469,6 +478,30 @@ export const aiUsageLogs = pgTable('ai_usage_logs', {
 });
 
 // ===========================================
+// Focus Briefings (Análises de Foco da IA)
+// ===========================================
+export const focusBriefings = pgTable('focus_briefings', {
+  id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  scope: varchar('scope', { length: 10 }).notNull(), // 'today' ou 'week'
+  
+  // Briefing gerado pela IA
+  briefingText: text('briefing_text').notNull(),
+  keyHighlights: jsonb('key_highlights'), // array de destaques
+  
+  // Itens priorizados (IDs + scores)
+  prioritizedItems: jsonb('prioritized_items').notNull(),
+  
+  // Contadores
+  totalItems: integer('total_items').default(0),
+  urgentCount: integer('urgent_count').default(0),
+  
+  // Metadata
+  generatedAt: timestamp('generated_at').defaultNow(),
+  expiresAt: timestamp('expires_at'),
+});
+
+// ===========================================
 // Estatísticas Diárias
 // ===========================================
 export const dailyStats = pgTable('daily_stats', {
@@ -543,3 +576,7 @@ export type NewAIUsageLog = typeof aiUsageLogs.$inferInsert;
 // Action Items
 export type ActionItemDB = typeof actionItems.$inferSelect;
 export type NewActionItemDB = typeof actionItems.$inferInsert;
+
+// Focus Briefings
+export type FocusBriefingDB = typeof focusBriefings.$inferSelect;
+export type NewFocusBriefingDB = typeof focusBriefings.$inferInsert;

@@ -19,6 +19,8 @@ import { financialRoutes } from './routes/financial.js';
 import { aiUsageRoutes } from './routes/ai-usage.js';
 import { adminRoutes } from './routes/admin.js';
 import { taskRoutes } from './routes/tasks.js';
+import { focusRoutes } from './routes/focus.js';
+import { agentTeachingRoutes } from './routes/agent-teaching.js';
 import { getAgentManager } from './services/agent-manager.js';
 
 // Inicializa banco de dados
@@ -62,6 +64,8 @@ async function main() {
   await app.register(aiUsageRoutes, { prefix: '/api/ai-usage' });
   await app.register(adminRoutes, { prefix: '/api/admin' });
   await app.register(taskRoutes, { prefix: '/api/tasks' });
+  await app.register(focusRoutes, { prefix: '/api/focus' });
+  await app.register(agentTeachingRoutes, { prefix: '/api/agent-teaching' });
 
   // Health check (público)
   app.get('/api/health', async () => {
@@ -85,6 +89,9 @@ async function main() {
       try {
         const agentManager = getAgentManager();
         await agentManager.autoStartAgents();
+        
+        // Inicia scheduler de briefings de foco diários
+        agentManager.startDailyFocusScheduler();
       } catch (error) {
         console.error('[Server] Erro ao auto-iniciar agentes:', error);
       }

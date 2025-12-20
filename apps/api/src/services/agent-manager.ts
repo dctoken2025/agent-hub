@@ -797,6 +797,54 @@ export class AgentManager {
   }
 
   /**
+   * Inicia o scheduler de geração diária de briefings de foco.
+   * Executa todos os dias às 6h da manhã (horário Brasil).
+   */
+  startDailyFocusScheduler(): void {
+    const BRAZIL_OFFSET = -3; // UTC-3
+    
+    const checkAndRun = async () => {
+      const now = new Date();
+      const brazilHour = (now.getUTCHours() + BRAZIL_OFFSET + 24) % 24;
+      const brazilMinute = now.getUTCMinutes();
+      
+      // Executa às 6:00 AM Brasil
+      if (brazilHour === 6 && brazilMinute === 0) {
+        console.log('[AgentManager] 🎯 Gerando briefings de foco diários...');
+        await this.generateDailyFocusBriefings();
+      }
+    };
+
+    // Verifica a cada minuto
+    setInterval(checkAndRun, 60 * 1000);
+    console.log('[AgentManager] 📅 Scheduler de briefings de foco iniciado (6h Brasil)');
+  }
+
+  /**
+   * Gera briefings de foco para todos os usuários ativos.
+   */
+  async generateDailyFocusBriefings(): Promise<void> {
+    const db = getDb();
+    if (!db) return;
+
+    try {
+      // Busca todos os usuários ativos
+      const activeUsers = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.isActive, true));
+
+      console.log(`[AgentManager] 🎯 Gerando briefings para ${activeUsers.length} usuário(s)...`);
+
+      // Por enquanto, os briefings são gerados sob demanda quando o usuário acessa
+      // A geração automática pode ser implementada futuramente
+      console.log('[AgentManager] ✅ Briefings serão gerados sob demanda');
+    } catch (error) {
+      console.error('[AgentManager] ❌ Erro ao gerar briefings de foco:', error);
+    }
+  }
+
+  /**
    * Auto-inicia agentes de todos os usuários que tinham agentes ativos.
    * Chamado quando o servidor inicia.
    */

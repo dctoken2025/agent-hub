@@ -17,6 +17,7 @@ import { Terms } from './pages/Terms';
 import AgentConfig from './pages/AgentConfig';
 import { AIUsage } from './pages/AIUsage';
 import { Users } from './pages/Users';
+import { Focus } from './pages/Focus';
 import { Loader2, AlertCircle, Clock, Timer } from 'lucide-react';
 
 // Banner de trial expirando/expirado
@@ -120,6 +121,7 @@ function AppContent() {
       <Layout hasBanner={hasBanner}>
         <Switch>
           <Route path="/" component={Dashboard} />
+          <Route path="/focus" component={Focus} />
           <Route path="/emails" component={Emails} />
           <Route path="/agents" component={Agents} />
           <Route path="/agent-config" component={AgentConfig} />

@@ -16,7 +16,8 @@ import {
   DollarSign,
   Brain,
   Users,
-  CheckSquare
+  CheckSquare,
+  Target
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -24,6 +25,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Foco', href: '/focus', icon: Target },
   { name: 'Emails', href: '/emails', icon: Mail },
   { name: 'Análises Jurídicas', href: '/legal', icon: Scale },
   { name: 'Financeiro', href: '/financial', icon: DollarSign },
