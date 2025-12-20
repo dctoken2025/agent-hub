@@ -72,7 +72,12 @@ export function Logs() {
   // Logs de atividade detalhados
   const { data: activityData, isLoading: activityLoading, refetch: refetchActivity } = useQuery({
     queryKey: ['activity-logs', selectedAgent],
-    queryFn: () => apiRequest<ActivityResponse>(`/agents/activity${selectedAgent ? `?agentId=${selectedAgent}` : ''}?limit=300`),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (selectedAgent) params.append('agentId', selectedAgent);
+      params.append('limit', '300');
+      return apiRequest<ActivityResponse>(`/agents/activity?${params.toString()}`);
+    },
     refetchInterval: autoRefresh && view === 'activity' ? 2000 : false,
   });
 

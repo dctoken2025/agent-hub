@@ -5,7 +5,7 @@
  */
 
 import { getDb, agentActivityLogs } from '../db/index.js';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, sql } from 'drizzle-orm';
 
 export type LogLevel = 'info' | 'success' | 'warning' | 'error' | 'debug';
 
@@ -116,14 +116,21 @@ export async function getActivityLogs(
   const limit = options?.limit || 100;
   
   try {
-    let query = db
+    // Monta condições de filtro
+    const conditions = [eq(agentActivityLogs.userId, userId)];
+    
+    // Filtra por agentId se especificado (busca parcial para funcionar com sufixos como -userId)
+    if (options?.agentId) {
+      conditions.push(sql`${agentActivityLogs.agentId} LIKE ${`%${options.agentId}%`}`);
+    }
+    
+    const results = await db
       .select()
       .from(agentActivityLogs)
-      .where(eq(agentActivityLogs.userId, userId))
+      .where(and(...conditions))
       .orderBy(desc(agentActivityLogs.createdAt))
       .limit(limit);
     
-    const results = await query;
     return results;
   } catch (error) {
     console.error('[ActivityLogger] Erro ao buscar logs:', error);
