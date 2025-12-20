@@ -50,8 +50,23 @@ export const userConfigs = pgTable('user_configs', {
     enabled: true,
     autoAnalyze: true,
     maxDocumentSizeMB: 10,
-    contractKeywords: ['contrato', 'acordo', 'termo', 'aditivo', 'procuração', 'minuta', 'proposta'],
-    highRiskKeywords: ['penalidade', 'multa', 'rescisão', 'indenização', 'exclusividade'],
+    contractKeywords: [
+      'contrato', 'acordo', 'termo', 'aditivo', 'minuta', 'proposta',
+      'procuração', 'estatuto', 'ata', 'cessão', 'licença',
+      'empréstimo', 'mútuo', 'garantia', 'fiança', 'hipoteca',
+      'prestação de serviços', 'parceria', 'confidencialidade', 'nda',
+      'memorando', 'letter of intent', 'loi', 'term sheet'
+    ],
+    highRiskKeywords: [
+      'multa', 'penalidade', 'indenização', 'perdas e danos',
+      'exclusividade', 'não-competição', 'non-compete', 'não concorrência',
+      'confidencialidade perpétua', 'prazo indeterminado',
+      'rescisão imediata', 'vencimento antecipado', 'cross-default',
+      'responsabilidade ilimitada', 'solidariamente responsável',
+      'renúncia', 'irrevogável', 'irretratável',
+      'foro de', 'arbitragem', 'cláusula penal',
+      'renovação automática', 'reajuste', 'correção monetária'
+    ],
   }),
   stablecoinAgentConfig: jsonb('stablecoin_agent_config').default({
     enabled: false,
