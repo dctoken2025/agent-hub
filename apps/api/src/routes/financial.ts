@@ -52,6 +52,10 @@ export const financialRoutes: FastifyPluginAsync = async (app) => {
           barcode_data as "barcodeData",
           barcode_type as "barcodeType",
           bank_code as "bankCode",
+          pix_key as "pixKey",
+          pix_key_type as "pixKeyType",
+          bank_account as "bankAccount",
+          recurrence,
           attachment_id as "attachmentId",
           attachment_filename as "attachmentFilename",
           priority,
@@ -341,6 +345,10 @@ export const financialRoutes: FastifyPluginAsync = async (app) => {
           barcode_data as "barcodeData",
           barcode_type as "barcodeType",
           bank_code as "bankCode",
+          pix_key as "pixKey",
+          pix_key_type as "pixKeyType",
+          bank_account as "bankAccount",
+          recurrence,
           attachment_id as "attachmentId",
           attachment_filename as "attachmentFilename",
           priority,
@@ -386,7 +394,8 @@ export const financialRoutes: FastifyPluginAsync = async (app) => {
     try {
       // Itens vencidos
       const overdueResult = await db.execute(sql.raw(`
-        SELECT id, creditor, amount, due_date as "dueDate", description, type
+        SELECT id, creditor, amount, due_date as "dueDate", description, type, 
+               recurrence, related_project as "relatedProject"
         FROM financial_items
         WHERE user_id = '${userId}' AND status = 'overdue'
         ORDER BY due_date ASC
@@ -395,7 +404,8 @@ export const financialRoutes: FastifyPluginAsync = async (app) => {
 
       // Itens urgentes (vence em até 3 dias)
       const urgentResult = await db.execute(sql.raw(`
-        SELECT id, creditor, amount, due_date as "dueDate", description, type
+        SELECT id, creditor, amount, due_date as "dueDate", description, type,
+               recurrence, related_project as "relatedProject"
         FROM financial_items
         WHERE user_id = '${userId}' 
           AND status = 'pending'
@@ -408,7 +418,8 @@ export const financialRoutes: FastifyPluginAsync = async (app) => {
 
       // Próximos vencimentos (4-14 dias)
       const upcomingResult = await db.execute(sql.raw(`
-        SELECT id, creditor, amount, due_date as "dueDate", description, type
+        SELECT id, creditor, amount, due_date as "dueDate", description, type,
+               recurrence, related_project as "relatedProject"
         FROM financial_items
         WHERE user_id = '${userId}' 
           AND status = 'pending'
@@ -421,7 +432,8 @@ export const financialRoutes: FastifyPluginAsync = async (app) => {
 
       // Itens recentes
       const recentResult = await db.execute(sql.raw(`
-        SELECT id, creditor, amount, due_date as "dueDate", description, type, status, analyzed_at as "analyzedAt"
+        SELECT id, creditor, amount, due_date as "dueDate", description, type, status, 
+               analyzed_at as "analyzedAt", recurrence, related_project as "relatedProject"
         FROM financial_items
         WHERE user_id = '${userId}'
         ORDER BY analyzed_at DESC
@@ -494,3 +506,4 @@ export const financialRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 };
+

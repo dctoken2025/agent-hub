@@ -9,6 +9,39 @@ export type FinancialItemStatus = 'pending' | 'paid' | 'overdue' | 'cancelled' |
 export type CreditorType = 'fornecedor' | 'cliente' | 'governo' | 'banco' | 'servico' | 'outro';
 export type FinancialCategory = 'operacional' | 'imposto' | 'folha' | 'servico' | 'produto' | 'aluguel' | 'utilidade' | 'marketing' | 'juridico' | 'outro';
 export type PaymentPriority = 'urgent' | 'high' | 'normal' | 'low';
+export type RecurrenceType = 'once' | 'weekly' | 'monthly' | 'quarterly' | 'semiannual' | 'annual';
+
+// ===========================================
+// Tipos para Anexos
+// ===========================================
+
+export interface DocumentAttachment {
+  id?: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  content?: Buffer;      // Conteúdo binário do anexo
+}
+
+export interface ExtractedDocument {
+  filename: string;
+  mimeType: string;
+  text: string;           // Texto extraído do PDF
+  pageCount?: number;
+  extractedAt: Date;
+  // Para imagens (análise via Vision)
+  isImage?: boolean;
+  base64Content?: string;
+  // Dados extraídos de boleto (via regex do PDF)
+  boletoInfo?: {
+    barcode?: string;
+    value?: number;
+    dueDate?: string;
+    beneficiaryName?: string;
+    beneficiaryDocument?: string;
+    pixKey?: string;
+  };
+}
 
 export interface FinancialItem {
   // Identificação
@@ -51,6 +84,20 @@ export interface FinancialItem {
   barcodeData?: string;    // Código de barras
   barcodeType?: 'boleto' | 'concessionaria' | 'arrecadacao';
   bankCode?: string;       // Código do banco
+  
+  // Formas de pagamento alternativas
+  pixKey?: string;         // Chave PIX (email, telefone, CPF/CNPJ, aleatória)
+  pixKeyType?: 'email' | 'phone' | 'cpf' | 'cnpj' | 'random';
+  bankAccount?: {          // Dados bancários para transferência
+    bank: string;
+    agency: string;
+    account: string;
+    accountType?: 'corrente' | 'poupanca';
+    holder?: string;
+  };
+  
+  // Recorrência
+  recurrence?: RecurrenceType;  // Tipo de recorrência
   
   // Anexo relacionado
   attachmentId?: string;
@@ -205,6 +252,31 @@ export const FinancialAnalysisSchema = {
               type: 'string',
               description: 'Código de barras do boleto (47-48 dígitos), se visível',
             },
+            pixKey: {
+              type: 'string',
+              description: 'Chave PIX para pagamento (email, telefone, CPF, CNPJ ou chave aleatória)',
+            },
+            pixKeyType: {
+              type: 'string',
+              enum: ['email', 'phone', 'cpf', 'cnpj', 'random'],
+              description: 'Tipo da chave PIX',
+            },
+            bankAccount: {
+              type: 'object',
+              properties: {
+                bank: { type: 'string', description: 'Nome ou código do banco' },
+                agency: { type: 'string', description: 'Número da agência' },
+                account: { type: 'string', description: 'Número da conta' },
+                accountType: { type: 'string', enum: ['corrente', 'poupanca'] },
+                holder: { type: 'string', description: 'Nome do titular' },
+              },
+              description: 'Dados bancários para transferência',
+            },
+            recurrence: {
+              type: 'string',
+              enum: ['once', 'weekly', 'monthly', 'quarterly', 'semiannual', 'annual'],
+              description: 'Tipo de recorrência do pagamento (mensal, anual, etc.)',
+            },
             priority: {
               type: 'string',
               enum: ['urgent', 'high', 'normal', 'low'],
@@ -239,3 +311,4 @@ export const FinancialAnalysisSchema = {
     required: ['items', 'summary'],
   },
 };
+

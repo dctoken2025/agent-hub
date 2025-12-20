@@ -216,6 +216,11 @@ async function saveFinancialItemsToDatabase(
         barcodeData: item.barcodeData || null,
         barcodeType: item.barcodeType || null,
         bankCode: item.bankCode || null,
+        // Novos campos de formas de pagamento
+        pixKey: (item as any).pixKey || null,
+        pixKeyType: (item as any).pixKeyType || null,
+        bankAccount: (item as any).bankAccount || null,
+        recurrence: (item as any).recurrence || null,
         attachmentId: item.attachmentId || null,
         attachmentFilename: item.attachmentFilename || null,
         priority: item.priority,

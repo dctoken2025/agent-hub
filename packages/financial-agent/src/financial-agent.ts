@@ -1,6 +1,7 @@
 import { Agent, type AgentConfig, type AgentResult, Notifier } from '@agent-hub/core';
 import { FinancialAnalyzer } from './financial-analyzer.js';
-import type { FinancialItem, FinancialAgentConfig } from './types.js';
+import { FinancialDocumentExtractor } from './document-extractor.js';
+import type { FinancialItem, FinancialAgentConfig, DocumentAttachment, ExtractedDocument } from './types.js';
 
 export interface FinancialAgentInput {
   emailId: string;
@@ -9,7 +10,8 @@ export interface FinancialAgentInput {
   emailBody: string;
   emailFrom?: string;      // Remetente do email
   emailDate?: Date;        // Data do email
-  attachmentInfo?: string; // Informações sobre anexos (extraídas de PDF se disponível)
+  attachmentInfo?: string; // Informações básicas sobre anexos (nome, tipo, tamanho)
+  attachments?: DocumentAttachment[]; // Anexos com conteúdo para análise profunda
 }
 
 export interface FinancialAgentResult {
@@ -25,9 +27,13 @@ export interface FinancialAgentResult {
 /**
  * Agente financeiro para análise de cobranças, boletos e pagamentos.
  * Recebe emails do Email Agent e extrai informações financeiras estruturadas.
+ * 
+ * MELHORADO: Agora extrai e analisa o conteúdo de anexos (PDFs de boletos, etc.)
+ * similar ao Legal Agent, para capturar todas as informações financeiras.
  */
 export class FinancialAgent extends Agent<FinancialAgentInput, FinancialAgentResult> {
   private analyzer: FinancialAnalyzer;
+  private extractor: FinancialDocumentExtractor;
   private financialConfig: FinancialAgentConfig;
   private notifier?: Notifier;
   
@@ -42,6 +48,7 @@ export class FinancialAgent extends Agent<FinancialAgentInput, FinancialAgentRes
     super(agentConfig);
     this.financialConfig = financialConfig;
     this.analyzer = new FinancialAnalyzer(this.financialConfig);
+    this.extractor = new FinancialDocumentExtractor();
     this.notifier = notifier;
   }
 
@@ -91,7 +98,61 @@ export class FinancialAgent extends Agent<FinancialAgentInput, FinancialAgentRes
     try {
       console.log(`[FinancialAgent] 📧 Processando email: ${toProcess.emailSubject}`);
 
-      // Analisa o email com IA
+      // Extrai texto dos anexos (PDFs, imagens)
+      const extractedDocuments: ExtractedDocument[] = [];
+      
+      if (toProcess.attachments && toProcess.attachments.length > 0) {
+        console.log(`[FinancialAgent] 📎 Processando ${toProcess.attachments.length} anexo(s)...`);
+        
+        for (const attachment of toProcess.attachments) {
+          try {
+            // Verifica se o tipo é suportado
+            if (!this.extractor.isSupported(attachment.mimeType)) {
+              console.log(`[FinancialAgent] ⚠️ Tipo não suportado: ${attachment.mimeType} (${attachment.filename})`);
+              continue;
+            }
+            
+            // Verifica se tem conteúdo
+            if (!attachment.content) {
+              console.log(`[FinancialAgent] ⚠️ Anexo sem conteúdo: ${attachment.filename}`);
+              continue;
+            }
+            
+            // Verifica tamanho máximo
+            if (attachment.size > this.financialConfig.maxAttachmentSize) {
+              console.log(`[FinancialAgent] ⚠️ Anexo muito grande: ${attachment.filename} (${attachment.size} bytes)`);
+              continue;
+            }
+            
+            console.log(`[FinancialAgent] 📄 Extraindo: ${attachment.filename}...`);
+            const extracted = await this.extractor.extract(attachment);
+            extractedDocuments.push(extracted);
+            
+            console.log(`[FinancialAgent] ✅ Extraído: ${attachment.filename} (${extracted.text.length} caracteres)`);
+            
+            // Log de dados de boleto encontrados
+            if (extracted.boletoInfo) {
+              console.log(`[FinancialAgent]    📊 Dados de boleto detectados:`);
+              if (extracted.boletoInfo.value) {
+                console.log(`[FinancialAgent]       Valor: R$ ${extracted.boletoInfo.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
+              }
+              if (extracted.boletoInfo.dueDate) {
+                console.log(`[FinancialAgent]       Vencimento: ${extracted.boletoInfo.dueDate}`);
+              }
+              if (extracted.boletoInfo.barcode) {
+                console.log(`[FinancialAgent]       Código: ${extracted.boletoInfo.barcode.substring(0, 25)}...`);
+              }
+            }
+            
+          } catch (error) {
+            console.error(`[FinancialAgent] ❌ Erro ao extrair ${attachment.filename}:`, error instanceof Error ? error.message : error);
+          }
+        }
+        
+        console.log(`[FinancialAgent] 📊 ${extractedDocuments.length}/${toProcess.attachments.length} anexo(s) extraído(s)`);
+      }
+
+      // Analisa o email com IA (agora incluindo documentos extraídos)
       const items = await this.analyzer.analyze(
         toProcess.emailSubject,
         toProcess.emailBody,
@@ -99,7 +160,8 @@ export class FinancialAgent extends Agent<FinancialAgentInput, FinancialAgentRes
         toProcess.threadId,
         toProcess.attachmentInfo,
         toProcess.emailFrom,
-        toProcess.emailDate
+        toProcess.emailDate,
+        extractedDocuments.length > 0 ? extractedDocuments : undefined
       );
 
       console.log(`[FinancialAgent] ✅ Encontrados ${items.length} item(ns) financeiro(s)`);
@@ -215,3 +277,4 @@ export class FinancialAgent extends Agent<FinancialAgentInput, FinancialAgentRes
     return this.queue.length;
   }
 }
+

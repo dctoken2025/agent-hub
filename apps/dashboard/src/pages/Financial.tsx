@@ -18,7 +18,13 @@ import {
   Banknote,
   AlertCircle,
   Mail,
-  ExternalLink
+  ExternalLink,
+  QrCode,
+  Landmark,
+  Repeat,
+  FolderKanban,
+  Copy,
+  CheckCheck
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn, apiRequest } from '@/lib/utils';
@@ -50,6 +56,18 @@ interface FinancialItem {
   installmentCurrent?: number;
   installmentTotal?: number;
   barcodeData?: string;
+  // Formas de pagamento alternativas
+  pixKey?: string;
+  pixKeyType?: 'email' | 'phone' | 'cpf' | 'cnpj' | 'random';
+  bankAccount?: {
+    bank: string;
+    agency: string;
+    account: string;
+    accountType?: 'corrente' | 'poupanca';
+    holder?: string;
+  };
+  // Recorrência
+  recurrence?: 'once' | 'weekly' | 'monthly' | 'quarterly' | 'semiannual' | 'annual';
   priority: 'urgent' | 'high' | 'normal' | 'low';
   notes?: string;
   relatedProject?: string;
@@ -58,6 +76,7 @@ interface FinancialItem {
   approvedAt?: string;
   confidence: number;
   analyzedAt: string;
+  attachmentFilename?: string;
 }
 
 interface DashboardResponse {
@@ -120,6 +139,23 @@ const categoryLabels: Record<string, string> = {
   marketing: 'Marketing',
   juridico: 'Jurídico',
   outro: 'Outros',
+};
+
+const recurrenceLabels: Record<string, { label: string; color: string }> = {
+  once: { label: 'Pagamento único', color: 'bg-gray-100 text-gray-700' },
+  weekly: { label: 'Semanal', color: 'bg-blue-100 text-blue-700' },
+  monthly: { label: 'Mensal', color: 'bg-green-100 text-green-700' },
+  quarterly: { label: 'Trimestral', color: 'bg-amber-100 text-amber-700' },
+  semiannual: { label: 'Semestral', color: 'bg-orange-100 text-orange-700' },
+  annual: { label: 'Anual', color: 'bg-purple-100 text-purple-700' },
+};
+
+const pixKeyTypeLabels: Record<string, string> = {
+  email: 'E-mail',
+  phone: 'Telefone',
+  cpf: 'CPF',
+  cnpj: 'CNPJ',
+  random: 'Chave aleatória',
 };
 
 function formatCurrency(cents: number): string {
@@ -411,145 +447,14 @@ export default function Financial() {
         </div>
       )}
 
-      {/* Modal de Detalhes */}
+      {/* Modal de Detalhes Melhorado */}
       {selectedItem && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-xl border shadow-xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
-            <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-card">
-              <h3 className="font-semibold text-lg">Detalhes da Cobrança</h3>
-              <button onClick={() => setSelectedItem(null)} className="p-1 hover:bg-muted rounded">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              {/* Status e Tipo */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className={cn("px-2 py-1 rounded text-xs font-medium", statusConfig[selectedItem.status]?.color || 'bg-gray-100 text-gray-800')}>
-                  {statusConfig[selectedItem.status]?.label || selectedItem.status}
-                </span>
-                <span className={cn("px-2 py-1 rounded text-xs font-medium", typeConfig[selectedItem.type]?.color || 'text-gray-600 bg-gray-100')}>
-                  {typeConfig[selectedItem.type]?.label || selectedItem.type}
-                </span>
-                {selectedItem.category && (
-                  <span className="px-2 py-1 rounded text-xs font-medium bg-muted">
-                    {categoryLabels[selectedItem.category] || selectedItem.category}
-                  </span>
-                )}
-              </div>
-
-              {/* Email de origem */}
-              {(selectedItem.emailSubject || selectedItem.emailFrom) && (
-                <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <div className="flex items-start gap-3">
-                    <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Detectado no email:</p>
-                      {selectedItem.emailSubject && (
-                        <p className="font-medium text-sm truncate">{selectedItem.emailSubject}</p>
-                      )}
-                      {selectedItem.emailFrom && (
-                        <p className="text-sm text-muted-foreground">De: {selectedItem.emailFrom}</p>
-                      )}
-                      {selectedItem.emailDate && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {formatDate(selectedItem.emailDate)}
-                        </p>
-                      )}
-                    </div>
-                    <a
-                      href={`/emails?id=${selectedItem.emailId}`}
-                      className="p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900 rounded text-blue-600 dark:text-blue-400"
-                      title="Ver email"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </div>
-                </div>
-              )}
-
-              {/* Valor */}
-              <div className="text-center py-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Valor</p>
-                <p className="text-3xl font-bold">{formatCurrency(selectedItem.amount)}</p>
-                {selectedItem.installmentCurrent && selectedItem.installmentTotal && (
-                  <p className="text-sm text-muted-foreground">
-                    Parcela {selectedItem.installmentCurrent} de {selectedItem.installmentTotal}
-                  </p>
-                )}
-              </div>
-
-              {/* Credor */}
-              <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                <Building2 className="h-8 w-8 text-muted-foreground" />
-                <div>
-                  <p className="font-medium">{selectedItem.creditor}</p>
-                  {selectedItem.creditorDocument && (
-                    <p className="text-sm text-muted-foreground">{selectedItem.creditorDocument}</p>
-                  )}
-                  {selectedItem.creditorType && (
-                    <p className="text-xs text-muted-foreground capitalize">{selectedItem.creditorType}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Descrição */}
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Descrição</p>
-                <p>{selectedItem.description}</p>
-              </div>
-
-              {/* Datas */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Vencimento</p>
-                  <p className="font-medium">{formatDate(selectedItem.dueDate)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Emissão</p>
-                  <p className="font-medium">{formatDate(selectedItem.issueDate)}</p>
-                </div>
-              </div>
-
-              {/* Código de Barras */}
-              {selectedItem.barcodeData && (
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Código de Barras</p>
-                  <code className="block p-2 bg-muted rounded text-xs break-all">{selectedItem.barcodeData}</code>
-                </div>
-              )}
-
-              {/* Referência */}
-              {selectedItem.reference && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Referência</p>
-                  <p className="font-medium">{selectedItem.reference}</p>
-                </div>
-              )}
-
-              {/* Notas */}
-              {selectedItem.notes && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Observações</p>
-                  <p className="text-sm">{selectedItem.notes}</p>
-                </div>
-              )}
-
-              {/* Ações */}
-              {selectedItem.status !== 'paid' && (
-                <div className="pt-4 border-t flex gap-2">
-                  <button
-                    onClick={() => markAsPaid.mutate(selectedItem.id)}
-                    disabled={markAsPaid.isPending}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                  >
-                    <CheckCircle className="h-4 w-4" />
-                    {markAsPaid.isPending ? 'Salvando...' : 'Marcar como Pago'}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <FinancialDetailsModal
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          onMarkAsPaid={() => markAsPaid.mutate(selectedItem.id)}
+          isPending={markAsPaid.isPending}
+        />
       )}
     </div>
   );
@@ -569,8 +474,18 @@ function ItemRow({ item, onClick, showStatus }: { item: FinancialItem; onClick: 
         <TypeIcon className="h-5 w-5" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{item.creditor}</p>
+        <div className="flex items-center gap-2">
+          <p className="font-medium truncate">{item.creditor}</p>
+          {item.recurrence && item.recurrence !== 'once' && (
+            <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium", recurrenceLabels[item.recurrence]?.color || 'bg-gray-100 text-gray-700')}>
+              {recurrenceLabels[item.recurrence]?.label || item.recurrence}
+            </span>
+          )}
+        </div>
         <p className="text-sm text-muted-foreground truncate">{item.description}</p>
+        {item.relatedProject && (
+          <p className="text-xs text-blue-600 truncate">📁 {item.relatedProject}</p>
+        )}
       </div>
       <div className="text-right shrink-0">
         <p className="font-semibold">{formatCurrency(item.amount)}</p>
@@ -600,3 +515,319 @@ function ItemRow({ item, onClick, showStatus }: { item: FinancialItem; onClick: 
     </button>
   );
 }
+
+// Modal de detalhes completo
+function FinancialDetailsModal({ 
+  item, 
+  onClose, 
+  onMarkAsPaid, 
+  isPending 
+}: { 
+  item: FinancialItem; 
+  onClose: () => void; 
+  onMarkAsPaid: () => void;
+  isPending: boolean;
+}) {
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const copyToClipboard = async (text: string, field: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      console.error('Erro ao copiar:', err);
+    }
+  };
+
+  const CopyButton = ({ text, field }: { text: string; field: string }) => (
+    <button
+      onClick={() => copyToClipboard(text, field)}
+      className="p-1.5 hover:bg-muted rounded-md transition-colors"
+      title="Copiar"
+    >
+      {copiedField === field ? (
+        <CheckCheck className="h-4 w-4 text-green-600" />
+      ) : (
+        <Copy className="h-4 w-4 text-muted-foreground" />
+      )}
+    </button>
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-xl border shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-card z-10">
+          <h3 className="font-semibold text-lg">Detalhes da Cobrança</h3>
+          <button onClick={onClose} className="p-1 hover:bg-muted rounded">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-5">
+          {/* Status, Tipo, Categoria e Recorrência */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={cn("px-2 py-1 rounded text-xs font-medium", statusConfig[item.status]?.color || 'bg-gray-100 text-gray-800')}>
+              {statusConfig[item.status]?.label || item.status}
+            </span>
+            <span className={cn("px-2 py-1 rounded text-xs font-medium", typeConfig[item.type]?.color || 'text-gray-600 bg-gray-100')}>
+              {typeConfig[item.type]?.label || item.type}
+            </span>
+            {item.category && (
+              <span className="px-2 py-1 rounded text-xs font-medium bg-muted">
+                {categoryLabels[item.category] || item.category}
+              </span>
+            )}
+            {item.recurrence && (
+              <span className={cn("px-2 py-1 rounded text-xs font-medium flex items-center gap-1", recurrenceLabels[item.recurrence]?.color || 'bg-gray-100 text-gray-700')}>
+                <Repeat className="h-3 w-3" />
+                {recurrenceLabels[item.recurrence]?.label || item.recurrence}
+              </span>
+            )}
+          </div>
+
+          {/* Email de origem */}
+          {(item.emailSubject || item.emailFrom) && (
+            <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="flex items-start gap-3">
+                <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Detectado no email:</p>
+                  {item.emailSubject && (
+                    <p className="font-medium text-sm">{item.emailSubject}</p>
+                  )}
+                  {item.emailFrom && (
+                    <p className="text-sm text-muted-foreground">De: {item.emailFrom}</p>
+                  )}
+                  {item.emailDate && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {formatDate(item.emailDate)}
+                    </p>
+                  )}
+                </div>
+                <a
+                  href={`/emails?id=${item.emailId}`}
+                  className="p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900 rounded text-blue-600 dark:text-blue-400"
+                  title="Ver email"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </div>
+            </div>
+          )}
+
+          {/* Valor Principal */}
+          <div className="text-center py-5 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 rounded-xl border border-green-200 dark:border-green-800">
+            <p className="text-sm text-muted-foreground">Valor</p>
+            <p className="text-4xl font-bold text-green-700 dark:text-green-400">{formatCurrency(item.amount)}</p>
+            {item.installmentCurrent && item.installmentTotal && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Parcela {item.installmentCurrent} de {item.installmentTotal}
+              </p>
+            )}
+          </div>
+
+          {/* Grid Principal: Credor + Datas */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Credor */}
+            <div className="flex items-start gap-3 p-4 bg-muted/30 rounded-xl">
+              <Building2 className="h-8 w-8 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <p className="font-semibold text-lg">{item.creditor}</p>
+                {item.creditorDocument && (
+                  <p className="text-sm text-muted-foreground font-mono">{item.creditorDocument}</p>
+                )}
+                {item.creditorType && (
+                  <p className="text-xs text-muted-foreground capitalize mt-1">{item.creditorType}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Datas */}
+            <div className="p-4 bg-muted/30 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Vencimento</span>
+                </div>
+                <span className={cn(
+                  "font-semibold",
+                  item.status === 'overdue' && "text-red-600"
+                )}>
+                  {formatDate(item.dueDate)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Emissão</span>
+                </div>
+                <span className="font-medium">{formatDate(item.issueDate)}</span>
+              </div>
+              {item.competenceDate && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Competência</span>
+                  </div>
+                  <span className="font-medium">{item.competenceDate}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Descrição */}
+          <div className="p-4 bg-muted/20 rounded-xl">
+            <p className="text-sm text-muted-foreground mb-1">Descrição</p>
+            <p className="text-base">{item.description}</p>
+          </div>
+
+          {/* Projeto Relacionado */}
+          {item.relatedProject && (
+            <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+              <FolderKanban className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <div>
+                <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">Projeto/Operação</p>
+                <p className="font-medium">{item.relatedProject}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Formas de Pagamento */}
+          {(item.barcodeData || item.pixKey || item.bankAccount) && (
+            <div className="space-y-3">
+              <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                Formas de Pagamento
+              </h4>
+
+              {/* Código de Barras */}
+              {item.barcodeData && (
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Receipt className="h-4 w-4 text-slate-600" />
+                      <p className="text-sm font-medium">Código de Barras / Linha Digitável</p>
+                    </div>
+                    <CopyButton text={item.barcodeData} field="barcode" />
+                  </div>
+                  <code className="block p-3 bg-white dark:bg-slate-800 rounded-lg text-sm font-mono break-all border">
+                    {item.barcodeData}
+                  </code>
+                </div>
+              )}
+
+              {/* PIX */}
+              {item.pixKey && (
+                <div className="p-4 bg-teal-50 dark:bg-teal-950 rounded-xl border border-teal-200 dark:border-teal-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <QrCode className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                      <p className="text-sm font-medium text-teal-800 dark:text-teal-200">Chave PIX</p>
+                      {item.pixKeyType && (
+                        <span className="text-xs px-2 py-0.5 bg-teal-100 dark:bg-teal-900 rounded text-teal-700 dark:text-teal-300">
+                          {pixKeyTypeLabels[item.pixKeyType] || item.pixKeyType}
+                        </span>
+                      )}
+                    </div>
+                    <CopyButton text={item.pixKey} field="pix" />
+                  </div>
+                  <code className="block p-3 bg-white dark:bg-teal-900/50 rounded-lg text-sm font-mono break-all border border-teal-200 dark:border-teal-700">
+                    {item.pixKey}
+                  </code>
+                </div>
+              )}
+
+              {/* Dados Bancários */}
+              {item.bankAccount && (
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-950 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Landmark className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <p className="text-sm font-medium text-indigo-800 dark:text-indigo-200">Transferência Bancária</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-muted-foreground text-xs">Banco</p>
+                      <p className="font-medium">{item.bankAccount.bank}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Agência</p>
+                      <p className="font-mono font-medium">{item.bankAccount.agency}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Conta</p>
+                      <p className="font-mono font-medium">{item.bankAccount.account}</p>
+                    </div>
+                    {item.bankAccount.accountType && (
+                      <div>
+                        <p className="text-muted-foreground text-xs">Tipo</p>
+                        <p className="font-medium capitalize">{item.bankAccount.accountType}</p>
+                      </div>
+                    )}
+                    {item.bankAccount.holder && (
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground text-xs">Titular</p>
+                        <p className="font-medium">{item.bankAccount.holder}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Informações Adicionais */}
+          {(item.reference || item.notes || item.attachmentFilename) && (
+            <div className="space-y-3 pt-2">
+              <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                Informações Adicionais
+              </h4>
+
+              {item.reference && (
+                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                  <span className="text-sm text-muted-foreground">Referência</span>
+                  <span className="font-medium font-mono">{item.reference}</span>
+                </div>
+              )}
+
+              {item.attachmentFilename && (
+                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                  <span className="text-sm text-muted-foreground">Anexo analisado</span>
+                  <span className="font-medium text-sm">{item.attachmentFilename}</span>
+                </div>
+              )}
+
+              {item.notes && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-950 rounded-lg border border-amber-200 dark:border-amber-800">
+                  <p className="text-sm text-amber-800 dark:text-amber-200 font-medium mb-1">Observações</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">{item.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Metadados */}
+          <div className="text-xs text-muted-foreground flex items-center justify-between pt-2 border-t">
+            <span>Analisado em {formatDate(item.analyzedAt)}</span>
+            <span>Confiança: {item.confidence}%</span>
+          </div>
+
+          {/* Ações */}
+          {item.status !== 'paid' && (
+            <div className="pt-4 border-t flex gap-3">
+              <button
+                onClick={onMarkAsPaid}
+                disabled={isPending}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
+              >
+                <CheckCircle className="h-5 w-5" />
+                {isPending ? 'Salvando...' : 'Marcar como Pago'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+

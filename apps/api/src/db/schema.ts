@@ -272,6 +272,14 @@ export const financialItems = pgTable('financial_items', {
   barcodeType: varchar('barcode_type', { length: 20 }), // boleto, concessionaria, arrecadacao
   bankCode: varchar('bank_code', { length: 10 }),
   
+  // Formas de pagamento alternativas
+  pixKey: varchar('pix_key', { length: 255 }),
+  pixKeyType: varchar('pix_key_type', { length: 10 }), // email, phone, cpf, cnpj, random
+  bankAccount: jsonb('bank_account'), // { bank, agency, account, accountType, holder }
+  
+  // Recorrência
+  recurrence: varchar('recurrence', { length: 20 }), // once, weekly, monthly, quarterly, semiannual, annual
+  
   // Anexo
   attachmentId: varchar('attachment_id', { length: 255 }),
   attachmentFilename: varchar('attachment_filename', { length: 500 }),

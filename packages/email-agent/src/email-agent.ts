@@ -473,6 +473,8 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
 
   /**
    * Processa email com Financial Agent para análise de cobranças.
+   * MELHORADO: Agora baixa e envia o conteúdo dos anexos (PDFs de boletos, etc.)
+   * para análise profunda, similar ao Legal Agent.
    */
   private async processWithFinancialAgent(email: Email): Promise<FinancialItem[]> {
     console.log(`[EmailAgent] 💰 Iniciando processamento com Financial Agent para: ${email.subject}`);
@@ -485,17 +487,72 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
     try {
       // Monta informações sobre anexos (se houver)
       let attachmentInfo = '';
+      const attachmentsWithContent: Array<{
+        id?: string;
+        filename: string;
+        mimeType: string;
+        size: number;
+        content?: Buffer;
+      }> = [];
+      
       if (email.attachments && email.attachments.length > 0) {
+        console.log(`[EmailAgent] 📎 Email financeiro com ${email.attachments.length} anexo(s)`);
+        
         attachmentInfo = email.attachments.map(att => 
           `- ${att.filename} (${att.mimeType}, ${att.size} bytes)`
         ).join('\n');
+
+        // Baixa o conteúdo dos anexos suportados (PDFs, imagens)
+        const supportedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
+        
+        for (const att of email.attachments) {
+          try {
+            // Verifica se é tipo suportado
+            const isSupported = supportedTypes.some(t => att.mimeType.toLowerCase().includes(t) || att.mimeType.toLowerCase().startsWith('image/'));
+            if (!isSupported) {
+              console.log(`[EmailAgent] ⏭️ Tipo não suportado para análise: ${att.mimeType} (${att.filename})`);
+              continue;
+            }
+            
+            // Verifica se tem ID
+            if (!att.id) {
+              console.log(`[EmailAgent] ⚠️ Anexo ${att.filename} sem ID - pulando`);
+              continue;
+            }
+            
+            // Verifica tamanho (máximo 5MB)
+            if (att.size > 5 * 1024 * 1024) {
+              console.log(`[EmailAgent] ⚠️ Anexo muito grande: ${att.filename} (${att.size} bytes)`);
+              continue;
+            }
+            
+            console.log(`[EmailAgent] 📥 Baixando anexo financeiro: ${att.filename}...`);
+            const content = await this.gmailClient.getAttachmentContent(email.id, att.id);
+            
+            attachmentsWithContent.push({
+              id: att.id,
+              filename: att.filename,
+              mimeType: att.mimeType,
+              size: att.size,
+              content,
+            });
+            
+            console.log(`[EmailAgent] ✅ Anexo baixado: ${att.filename} (${content.length} bytes)`);
+            
+          } catch (error) {
+            console.error(`[EmailAgent] ❌ Erro ao baixar anexo ${att.filename}:`, error instanceof Error ? error.message : error);
+          }
+        }
+        
+        console.log(`[EmailAgent] 📊 ${attachmentsWithContent.length}/${email.attachments.length} anexo(s) baixado(s) para análise`);
       }
 
-      // Envia para Financial Agent
+      // Envia para Financial Agent (agora com anexos!)
       console.log('[EmailAgent] 💰 Enviando para Financial Agent...');
       const emailFromStr = email.from.name 
         ? `${email.from.name} <${email.from.email}>`
         : email.from.email;
+      
       const result = await this.financialAgent.runOnce({
         emailId: email.id,
         threadId: email.threadId,
@@ -504,6 +561,7 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
         emailFrom: emailFromStr,
         emailDate: email.date ? new Date(email.date) : undefined,
         attachmentInfo,
+        attachments: attachmentsWithContent.length > 0 ? attachmentsWithContent : undefined,
       });
 
       if (result.success && result.data) {
@@ -512,6 +570,15 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
           result.data.items.forEach(item => {
             const amount = (item.amount / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
             console.log(`[EmailAgent]    💵 ${item.creditor}: R$ ${amount} - ${item.description.substring(0, 50)}`);
+            if (item.dueDate) {
+              console.log(`[EmailAgent]       📅 Vencimento: ${item.dueDate}`);
+            }
+            if (item.pixKey) {
+              console.log(`[EmailAgent]       🔑 PIX: ${item.pixKey}`);
+            }
+            if (item.recurrence) {
+              console.log(`[EmailAgent]       🔄 Recorrência: ${item.recurrence}`);
+            }
           });
         }
         return result.data.items;
