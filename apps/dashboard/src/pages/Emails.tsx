@@ -64,8 +64,16 @@ const priorityConfig = {
 type ReadFilter = 'unread' | 'read' | 'all';
 
 // Formata data e hora
-function formatDateTime(dateString: string): string {
+function formatDateTime(dateString: string | undefined | null): string {
+  if (!dateString) return 'Data não disponível';
+  
   const date = new Date(dateString);
+  
+  // Verifica se a data é válida
+  if (isNaN(date.getTime())) {
+    return 'Data não disponível';
+  }
+  
   return date.toLocaleString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
@@ -651,7 +659,7 @@ export function Emails() {
                       {priorityConfig[selectedEmail.classification.priority as keyof typeof priorityConfig]?.label || selectedEmail.classification.priority}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      {Math.round(selectedEmail.classification.confidence * 100)}% confiança
+                      {selectedEmail.classification.confidence}% confiança
                     </span>
                   </div>
                   <h2 className="text-xl font-semibold text-foreground truncate">
@@ -675,7 +683,7 @@ export function Emails() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">{formatDateTime(selectedEmail.emailDate)}</span>
+                  <span className="text-muted-foreground">{formatDateTime(selectedEmail.date || selectedEmail.emailDate)}</span>
                 </div>
                 {selectedEmail.classification.tags && selectedEmail.classification.tags.length > 0 && (
                   <div className="flex items-center gap-2 flex-wrap">
