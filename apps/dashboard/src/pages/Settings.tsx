@@ -11,9 +11,11 @@ import {
   TestTube,
   Loader2,
   User,
-  Coins
+  Coins,
+  Lock
 } from 'lucide-react';
 import { apiRequest } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ConfigResponse {
   config: {
@@ -37,6 +39,7 @@ interface ConfigResponse {
 
 export function Settings() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'anthropic' | 'gmail' | 'alchemy' | 'user' | 'notifications'>('anthropic');
   
   // Form states
@@ -45,7 +48,6 @@ export function Settings() {
   const [gmailClientSecret, setGmailClientSecret] = useState('');
   const [alchemyKey, setAlchemyKey] = useState('');
   const [stablecoinInterval, setStablecoinInterval] = useState(60);
-  const [userEmail, setUserEmail] = useState('');
   const [vipSenders, setVipSenders] = useState('');
   const [ignoreSenders, setIgnoreSenders] = useState('');
   const [slackWebhook, setSlackWebhook] = useState('');
@@ -56,7 +58,6 @@ export function Settings() {
     queryFn: async () => {
       const result = await apiRequest<ConfigResponse>('/config');
       // Preenche os campos com valores atuais
-      setUserEmail(result.config.user.email);
       setVipSenders(result.config.user.vipSenders.join(', '));
       setIgnoreSenders(result.config.user.ignoreSenders.join(', '));
       setStablecoinInterval(result.config.settings.stablecoinCheckInterval || 60);
@@ -464,16 +465,18 @@ export function Settings() {
           </div>
           <div className="p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2">Seu Email</label>
+              <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+                Seu Email
+                <Lock className="h-3 w-3 text-muted-foreground" />
+              </label>
               <input
                 type="email"
-                value={userEmail}
-                onChange={(e) => setUserEmail(e.target.value)}
-                placeholder="seu@email.com"
-                className="w-full px-4 py-2 rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                value={user?.email || ''}
+                disabled
+                className="w-full px-4 py-2 rounded-lg border bg-muted text-muted-foreground cursor-not-allowed"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Usado para identificar quando você é o destinatário principal
+                Detectado automaticamente do seu login Google
               </p>
             </div>
             <div>
@@ -504,11 +507,11 @@ export function Settings() {
             </div>
             <button
               onClick={() => saveUserMutation.mutate({
-                email: userEmail,
+                email: user?.email || '',
                 vipSenders: vipSenders.split(',').map(s => s.trim()).filter(Boolean),
                 ignoreSenders: ignoreSenders.split(',').map(s => s.trim()).filter(Boolean),
               })}
-              disabled={!userEmail || saveUserMutation.isPending}
+              disabled={!user?.email || saveUserMutation.isPending}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
             >
               {saveUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
