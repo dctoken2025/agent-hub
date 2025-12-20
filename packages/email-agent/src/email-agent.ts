@@ -123,12 +123,20 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
 
   async initialize(): Promise<void> {
     console.log('[EmailAgent] Inicializando conexão com Gmail...');
-    await this.gmailClient.initialize();
     
+    // Se tiver tokens passados (do banco de dados), usa diretamente
+    if (this.emailConfig.gmailTokens) {
+      console.log('[EmailAgent] Usando tokens do banco de dados...');
+      await this.gmailClient.initializeWithTokens(this.emailConfig.gmailTokens);
+    } else {
+      // Senão, tenta ler de arquivo local (modo CLI/desenvolvimento)
+      await this.gmailClient.initialize();
+    }
+
     // Obtém ou cria o label para marcar emails processados
     this.processedLabelId = await this.gmailClient.getOrCreateLabel(PROCESSED_LABEL_NAME);
     console.log(`[EmailAgent] Label "${PROCESSED_LABEL_NAME}" configurado (ID: ${this.processedLabelId})`);
-    
+
     console.log('[EmailAgent] Conexão estabelecida');
   }
 

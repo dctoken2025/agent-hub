@@ -35,7 +35,24 @@ export class GmailClient {
   }
 
   /**
+   * Inicializa o cliente Gmail com tokens passados diretamente.
+   * Usado no modo multi-tenant onde tokens vêm do banco de dados.
+   */
+  async initializeWithTokens(tokens: Record<string, unknown>): Promise<void> {
+    console.log('[GmailClient] Inicializando com tokens do banco de dados...');
+    
+    if (!tokens || !tokens.access_token) {
+      throw new Error('Tokens inválidos: access_token não encontrado');
+    }
+
+    this.oauth2Client.setCredentials(tokens);
+    this.gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
+    console.log('[GmailClient] ✅ Inicializado com tokens do banco');
+  }
+
+  /**
    * Inicializa o cliente Gmail com autenticação.
+   * Lê tokens de arquivo local (modo desenvolvimento/CLI).
    */
   async initialize(): Promise<void> {
     console.log('[GmailClient] Iniciando inicialização...');
