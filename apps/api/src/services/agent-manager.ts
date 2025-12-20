@@ -603,6 +603,16 @@ export class AgentManager {
               const amount = item.amount ? (item.amount / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'N/A';
               logger.detail(`${item.creditor}: ${amount}`);
             });
+
+            // Salva itens financeiros quando executado diretamente (não via Email Agent)
+            if (financialData?.items && financialData.items.length > 0) {
+              try {
+                await saveFinancialItemsToDatabase(financialData.items as any[], userId);
+                logger.info(`Itens financeiros salvos no banco`, '💾');
+              } catch (saveError) {
+                console.error('[AgentManager] Erro ao salvar itens financeiros:', saveError);
+              }
+            }
           } else {
             logger.info('Nenhuma cobrança identificada neste email', '📭');
           }
