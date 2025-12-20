@@ -118,6 +118,52 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
+    // Financial Agent
+    const financialAgentRunning = runningAgents.find((a) =>
+      a.config.id.includes('financial')
+    );
+    if (userConfig.financialAgent.enabled) {
+      let dbRunCount = 0;
+      let dbLastRun: Date | null = null;
+
+      if (db) {
+        try {
+          const { financialItems } = await import('../db/schema.js');
+          const countResult = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(financialItems)
+            .where(eq(financialItems.userId, userId));
+
+          const lastRunResult = await db
+            .select({ analyzedAt: financialItems.analyzedAt })
+            .from(financialItems)
+            .where(eq(financialItems.userId, userId))
+            .orderBy(desc(financialItems.analyzedAt))
+            .limit(1);
+
+          dbRunCount = countResult[0]?.count || 0;
+          dbLastRun = lastRunResult[0]?.analyzedAt || null;
+        } catch {
+          // Ignora erros
+        }
+      }
+
+      agents.push({
+        config: {
+          id: 'financial-agent',
+          name: 'Financial Agent',
+          description: 'Agente de análise de cobranças, boletos e pagamentos',
+          enabled: userConfig.financialAgent.enabled,
+          schedule: {
+            type: 'manual',
+          },
+        },
+        status: financialAgentRunning ? 'running' : 'stopped',
+        runCount: financialAgentRunning?.runCount || dbRunCount,
+        lastRun: financialAgentRunning?.lastRun || dbLastRun,
+      });
+    }
+
     // Stablecoin Agent
     const stablecoinAgentRunning = runningAgents.find((a) =>
       a.config.id.includes('stablecoin')
