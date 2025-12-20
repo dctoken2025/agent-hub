@@ -300,7 +300,7 @@ export function Logs() {
               {activityLogs.length} entradas
             </span>
           </div>
-          <div className="p-4 font-mono text-sm min-h-[500px] max-h-[calc(100vh-300px)] overflow-y-auto">
+          <div className="p-4 font-mono text-sm min-h-[300px] max-h-[calc(100vh-380px)] overflow-y-auto">
             {activityLoading && activityLogs.length === 0 ? (
               <div className="flex items-center justify-center py-12">
                 <RefreshCw className="h-6 w-6 animate-spin text-gray-500" />
