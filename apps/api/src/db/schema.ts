@@ -11,6 +11,7 @@ export const users = pgTable('users', {
   role: varchar('role', { length: 20 }).notNull().default('user'), // 'admin' ou 'user'
   gmailTokens: jsonb('gmail_tokens'), // Tokens OAuth individuais do Gmail
   isActive: boolean('is_active').default(true),
+  accountStatus: varchar('account_status', { length: 20 }).notNull().default('pending'), // 'pending', 'active', 'suspended'
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });

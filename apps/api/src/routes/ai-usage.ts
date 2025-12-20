@@ -257,6 +257,86 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // Obtém gastos reais da OpenAI via Admin API
+  app.get('/openai', { preHandler: [authMiddleware, adminMiddleware] }, async () => {
+    const globalCfg = await loadGlobalConfig();
+    const adminApiKey = globalCfg.ai.openaiAdminApiKey;
+
+    if (!adminApiKey) {
+      return { 
+        error: 'Admin API Key da OpenAI não configurada',
+        data: null,
+        configUrl: 'https://platform.openai.com/settings/organization/admin-keys',
+      };
+    }
+
+    try {
+      // Busca custos dos últimos 7 dias
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 7);
+
+      const response = await fetch(
+        `https://api.openai.com/v1/organization/costs?` +
+        `start_time=${Math.floor(startDate.getTime() / 1000)}&` +
+        `end_time=${Math.floor(endDate.getTime() / 1000)}&` +
+        `group_by=project_id`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${adminApiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json() as { error?: { message?: string } };
+        return { 
+          error: errorData.error?.message || `Erro ${response.status}`,
+          data: null,
+        };
+      }
+
+      const costData = await response.json();
+
+      // Também busca uso de tokens
+      const usageResponse = await fetch(
+        `https://api.openai.com/v1/organization/usage/completions?` +
+        `start_time=${Math.floor(startDate.getTime() / 1000)}&` +
+        `end_time=${Math.floor(endDate.getTime() / 1000)}&` +
+        `group_by=model`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${adminApiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      let usageData = null;
+      if (usageResponse.ok) {
+        usageData = await usageResponse.json();
+      }
+
+      return { 
+        costs: costData,
+        usage: usageData,
+        period: {
+          start: startDate.toISOString(),
+          end: endDate.toISOString(),
+        },
+      };
+    } catch (error) {
+      console.error('[AIUsage] Erro ao consultar OpenAI Admin API:', error);
+      return { 
+        error: error instanceof Error ? error.message : 'Erro de conexão',
+        data: null,
+      };
+    }
+  });
+
   // ===========================================
   // CONFIGURAÇÃO DE AI
   // ===========================================
@@ -276,8 +356,10 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
       },
       openai: {
         apiKey: globalCfg.ai.openaiApiKey ? '••••••••' + globalCfg.ai.openaiApiKey.slice(-4) : '',
+        adminApiKey: globalCfg.ai.openaiAdminApiKey ? '••••••••' + globalCfg.ai.openaiAdminApiKey.slice(-4) : '',
         model: globalCfg.ai.openaiModel,
         isConfigured: !!globalCfg.ai.openaiApiKey,
+        hasAdminKey: !!globalCfg.ai.openaiAdminApiKey,
       },
       fallbackEnabled: globalCfg.ai.fallbackEnabled,
       availableModels: AVAILABLE_MODELS,
@@ -293,6 +375,7 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
       anthropicModel?: string;
       openaiApiKey?: string;
       openaiModel?: string;
+      openaiAdminApiKey?: string;
       fallbackEnabled?: boolean;
     };
 
@@ -316,6 +399,9 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
       }
       if (body.openaiModel) {
         await saveGlobalConfigValue('ai.openaiModel', body.openaiModel);
+      }
+      if (body.openaiAdminApiKey) {
+        await saveGlobalConfigValue('ai.openaiAdminApiKey', body.openaiAdminApiKey, true);
       }
       if (body.fallbackEnabled !== undefined) {
         await saveGlobalConfigValue('ai.fallbackEnabled', body.fallbackEnabled.toString());

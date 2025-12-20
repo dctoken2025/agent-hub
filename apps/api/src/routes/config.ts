@@ -95,6 +95,7 @@ export async function loadGlobalConfig(): Promise<{
     anthropicAdminApiKey: string;
     openaiApiKey: string;
     openaiModel: string;
+    openaiAdminApiKey: string;
     fallbackEnabled: boolean;
   };
 }> {
@@ -113,6 +114,7 @@ export async function loadGlobalConfig(): Promise<{
       anthropicAdminApiKey: '',
       openaiApiKey: process.env.OPENAI_API_KEY || '',
       openaiModel: 'gpt-4o',
+      openaiAdminApiKey: '',
       fallbackEnabled: true,
     },
   };
@@ -145,6 +147,7 @@ export async function loadGlobalConfig(): Promise<{
         anthropicAdminApiKey: configMap.get('ai.anthropicAdminApiKey') || defaults.ai.anthropicAdminApiKey,
         openaiApiKey: configMap.get('ai.openaiApiKey') || defaults.ai.openaiApiKey,
         openaiModel: configMap.get('ai.openaiModel') || defaults.ai.openaiModel,
+        openaiAdminApiKey: configMap.get('ai.openaiAdminApiKey') || defaults.ai.openaiAdminApiKey,
         fallbackEnabled: configMap.get('ai.fallbackEnabled') !== 'false',
       },
     };

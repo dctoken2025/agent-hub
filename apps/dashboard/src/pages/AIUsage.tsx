@@ -79,8 +79,10 @@ interface AIConfig {
   };
   openai: {
     apiKey: string;
+    adminApiKey: string;
     model: string;
     isConfigured: boolean;
+    hasAdminKey: boolean;
   };
   fallbackEnabled: boolean;
   availableModels: {
@@ -99,6 +101,7 @@ export function AIUsage() {
   const [anthropicAdminApiKey, setAnthropicAdminApiKey] = useState('');
   const [anthropicModel, setAnthropicModel] = useState('');
   const [openaiApiKey, setOpenaiApiKey] = useState('');
+  const [openaiAdminApiKey, setOpenaiAdminApiKey] = useState('');
   const [openaiModel, setOpenaiModel] = useState('');
   const [fallbackEnabled, setFallbackEnabled] = useState(true);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -133,6 +136,7 @@ export function AIUsage() {
       setAnthropicApiKey('');
       setAnthropicAdminApiKey('');
       setOpenaiApiKey('');
+      setOpenaiAdminApiKey('');
     },
   });
 
@@ -571,13 +575,35 @@ export function AIUsage() {
                         Testar
                       </button>
                     </div>
-                    <a 
-                      href="https://platform.openai.com/api-keys" 
-                      target="_blank" 
+                    <a
+                      href="https://platform.openai.com/api-keys"
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
                     >
                       Gerar API Key <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Admin API Key 
+                      <span className="text-muted-foreground font-normal ml-1">(opcional, para consultar gastos)</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={openaiAdminApiKey}
+                      onChange={(e) => setOpenaiAdminApiKey(e.target.value)}
+                      placeholder={config?.openai.adminApiKey || 'sk-admin-...'}
+                      className="w-full px-3 py-2 border rounded-lg bg-background"
+                    />
+                    <a 
+                      href="https://platform.openai.com/settings/organization/admin-keys" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                    >
+                      Gerar Admin API Key <ExternalLink className="h-3 w-3" />
                     </a>
                   </div>
 
@@ -621,6 +647,7 @@ export function AIUsage() {
                   if (anthropicAdminApiKey) data.anthropicAdminApiKey = anthropicAdminApiKey;
                   if (anthropicModel) data.anthropicModel = anthropicModel;
                   if (openaiApiKey) data.openaiApiKey = openaiApiKey;
+                  if (openaiAdminApiKey) data.openaiAdminApiKey = openaiAdminApiKey;
                   if (openaiModel) data.openaiModel = openaiModel;
                   saveConfigMutation.mutate(data);
                 }}
