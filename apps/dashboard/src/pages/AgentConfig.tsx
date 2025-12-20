@@ -257,6 +257,9 @@ export default function AgentConfig() {
   const [expandedSection, setExpandedSection] = useState<'email' | 'legal' | 'stablecoin' | null>('email');
   const [editingRule, setEditingRule] = useState<ClassificationRule | null>(null);
   const [showNewRule, setShowNewRule] = useState(false);
+  const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
+  const [isAddingSuggestions, setIsAddingSuggestions] = useState(false);
 
   // Estados locais para edição
   const [emailForm, setEmailForm] = useState<EmailAgentSettings | null>(null);
@@ -577,23 +580,16 @@ export default function AgentConfig() {
                 </h4>
                 <div className="flex gap-2">
                   <button
-                    onClick={async () => {
+                    onClick={() => {
                       const existingIds = (data?.emailAgent?.customRules || []).map(r => r.id);
-                      const newRules = SUGGESTED_RULES.filter(r => !existingIds.includes(r.id));
-                      if (newRules.length === 0) {
+                      const availableRules = SUGGESTED_RULES.filter(r => !existingIds.includes(r.id));
+                      if (availableRules.length === 0) {
                         dialog.success('Todas as regras sugeridas já foram adicionadas!');
                         return;
                       }
-                      if (await dialog.confirm(`Adicionar ${newRules.length} regras sugeridas para melhor classificação?`)) {
-                        for (const rule of newRules) {
-                          await apiRequest('/config/agents/email/rules', {
-                            method: 'POST',
-                            body: JSON.stringify(rule),
-                          });
-                        }
-                        queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
-                        dialog.success(`${newRules.length} regras adicionadas com sucesso!`);
-                      }
+                      // Pré-seleciona todas as regras disponíveis
+                      setSelectedSuggestions(new Set(availableRules.map(r => r.id)));
+                      setShowSuggestionsModal(true);
                     }}
                     className="flex items-center gap-1 px-3 py-1.5 bg-amber-100 text-amber-700 border border-amber-300 rounded-lg text-sm hover:bg-amber-200"
                   >
@@ -1036,6 +1032,181 @@ export default function AgentConfig() {
           </div>
         )}
       </div>
+      {/* Modal de Sugestões de Regras */}
+      {showSuggestionsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl border shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="p-4 border-b flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="h-5 w-5 text-amber-500" />
+                <h3 className="font-semibold text-lg">Regras Sugeridas</h3>
+              </div>
+              <button
+                onClick={() => setShowSuggestionsModal(false)}
+                className="p-1 hover:bg-muted rounded"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Descrição */}
+            <div className="px-4 py-3 bg-muted/30 border-b">
+              <p className="text-sm text-muted-foreground">
+                Selecione as regras que deseja adicionar. Essas regras são baseadas em padrões comuns
+                para profissionais do mercado financeiro e podem ser editadas ou removidas depois.
+              </p>
+            </div>
+
+            {/* Lista de Regras */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {(() => {
+                const existingIds = (data?.emailAgent?.customRules || []).map(r => r.id);
+                const availableRules = SUGGESTED_RULES.filter(r => !existingIds.includes(r.id));
+                
+                if (availableRules.length === 0) {
+                  return (
+                    <p className="text-center text-muted-foreground py-8">
+                      Todas as regras sugeridas já foram adicionadas!
+                    </p>
+                  );
+                }
+
+                return availableRules.map((rule) => (
+                  <label
+                    key={rule.id}
+                    className={`block p-4 border rounded-lg cursor-pointer transition-colors ${
+                      selectedSuggestions.has(rule.id)
+                        ? 'border-primary bg-primary/5'
+                        : 'hover:bg-muted/50'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedSuggestions.has(rule.id)}
+                        onChange={(e) => {
+                          const newSet = new Set(selectedSuggestions);
+                          if (e.target.checked) {
+                            newSet.add(rule.id);
+                          } else {
+                            newSet.delete(rule.id);
+                          }
+                          setSelectedSuggestions(newSet);
+                        }}
+                        className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg">{priorityConfig[rule.action.priority]?.icon}</span>
+                          <span className="font-medium">{rule.name}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-xs text-white ${priorityConfig[rule.action.priority]?.color}`}>
+                            {priorityConfig[rule.action.priority]?.label}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-2">
+                          {rule.action.reasoning}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="bg-muted px-2 py-0.5 rounded font-mono">
+                            {fieldLabels[rule.condition.field]}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {operatorLabels[rule.condition.operator]}
+                          </span>
+                          <code className="bg-muted px-2 py-0.5 rounded text-xs max-w-xs truncate">
+                            {rule.condition.value}
+                          </code>
+                        </div>
+                        {rule.action.tags && rule.action.tags.length > 0 && (
+                          <div className="flex gap-1 mt-2">
+                            {rule.action.tags.map((tag, i) => (
+                              <span key={i} className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </label>
+                ));
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t flex items-center justify-between bg-muted/20">
+              <div className="text-sm text-muted-foreground">
+                {selectedSuggestions.size} regra{selectedSuggestions.size !== 1 ? 's' : ''} selecionada{selectedSuggestions.size !== 1 ? 's' : ''}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const existingIds = (data?.emailAgent?.customRules || []).map(r => r.id);
+                    const availableRules = SUGGESTED_RULES.filter(r => !existingIds.includes(r.id));
+                    if (selectedSuggestions.size === availableRules.length) {
+                      setSelectedSuggestions(new Set());
+                    } else {
+                      setSelectedSuggestions(new Set(availableRules.map(r => r.id)));
+                    }
+                  }}
+                  className="px-3 py-2 text-sm border rounded-lg hover:bg-muted"
+                >
+                  {selectedSuggestions.size === SUGGESTED_RULES.filter(r => 
+                    !(data?.emailAgent?.customRules || []).map(cr => cr.id).includes(r.id)
+                  ).length ? 'Desmarcar Todas' : 'Selecionar Todas'}
+                </button>
+                <button
+                  onClick={() => setShowSuggestionsModal(false)}
+                  className="px-4 py-2 text-sm border rounded-lg hover:bg-muted"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    if (selectedSuggestions.size === 0) {
+                      dialog.error('Selecione pelo menos uma regra');
+                      return;
+                    }
+                    setIsAddingSuggestions(true);
+                    try {
+                      const rulesToAdd = SUGGESTED_RULES.filter(r => selectedSuggestions.has(r.id));
+                      for (const rule of rulesToAdd) {
+                        await apiRequest('/config/agents/email/rules', {
+                          method: 'POST',
+                          body: JSON.stringify(rule),
+                        });
+                      }
+                      queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
+                      dialog.success(`${rulesToAdd.length} regra${rulesToAdd.length !== 1 ? 's' : ''} adicionada${rulesToAdd.length !== 1 ? 's' : ''} com sucesso!`);
+                      setShowSuggestionsModal(false);
+                      setSelectedSuggestions(new Set());
+                    } catch (error) {
+                      dialog.error('Erro ao adicionar regras');
+                    } finally {
+                      setIsAddingSuggestions(false);
+                    }
+                  }}
+                  disabled={selectedSuggestions.size === 0 || isAddingSuggestions}
+                  className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isAddingSuggestions ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                      Adicionando...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4" />
+                      Adicionar Selecionadas
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
