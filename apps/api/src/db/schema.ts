@@ -110,6 +110,21 @@ export const userConfigs = pgTable('user_configs', {
 });
 
 // ===========================================
+// Logs de Atividade dos Agentes (detalhado)
+// ===========================================
+export const agentActivityLogs = pgTable('agent_activity_logs', {
+  id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  agentId: varchar('agent_id', { length: 100 }).notNull(),
+  agentName: varchar('agent_name', { length: 100 }).notNull(),
+  level: varchar('level', { length: 20 }).notNull().default('info'), // info, success, warning, error, debug
+  emoji: varchar('emoji', { length: 10 }),
+  message: text('message').notNull(),
+  details: text('details'), // Detalhes adicionais (JSON ou texto)
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// ===========================================
 // Configurações do Sistema (LEGADO - será migrado)
 // ===========================================
 export const appConfig = pgTable('app_config', {

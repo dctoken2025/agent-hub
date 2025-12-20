@@ -332,7 +332,7 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
     return { success: true, message: 'Todos os agentes parados' };
   });
 
-  // Logs dos agentes do usuário
+  // Logs dos agentes do usuário (resumo)
   app.get('/logs', { preHandler: [authMiddleware] }, async (request) => {
     const userId = request.user!.id;
     const db = getDb();
@@ -361,6 +361,29 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
       return { logs, total: logs.length };
     } catch (error) {
       console.error('[AgentRoutes] Erro ao buscar logs:', error);
+      return { logs: [], total: 0 };
+    }
+  });
+
+  // Logs de atividade detalhados (tempo real)
+  app.get('/activity', { preHandler: [authMiddleware] }, async (request) => {
+    const userId = request.user!.id;
+    const { getActivityLogs } = await import('../services/activity-logger.js');
+    
+    try {
+      const query = request.query as { agentId?: string; limit?: string; since?: string };
+      const limit = parseInt(query.limit || '200');
+      const since = query.since ? new Date(query.since) : undefined;
+
+      const logs = await getActivityLogs(userId, { 
+        agentId: query.agentId, 
+        limit,
+        since 
+      });
+
+      return { logs, total: logs.length };
+    } catch (error) {
+      console.error('[AgentRoutes] Erro ao buscar activity logs:', error);
       return { logs: [], total: 0 };
     }
   });

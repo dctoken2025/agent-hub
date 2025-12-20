@@ -14,6 +14,7 @@ import { getDb, users, userConfigs, agentLogs, stablecoins, stablecoinEvents, st
 import { eq } from 'drizzle-orm';
 import { loadUserConfig, loadGlobalConfig } from '../routes/config.js';
 import { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase } from '../routes/emails.js';
+import { createAgentLogger } from './activity-logger.js';
 
 interface UserAgentSet {
   userId: string;
@@ -378,6 +379,20 @@ export class AgentManager {
    * Configura logging de eventos do agente.
    */
   private setupAgentLogging(agent: Agent, userId: string): void {
+    const agentId = agent.getInfo().config.id;
+    const agentName = agent.getInfo().config.name;
+    const logger = createAgentLogger(userId, agentId, agentName);
+
+    // Log quando agente inicia
+    agent.on('started', () => {
+      logger.success('Agente iniciado', '🚀');
+    });
+
+    // Log quando agente é pausado
+    agent.on('paused', () => {
+      logger.info('Agente pausado', '⏸️');
+    });
+
     agent.on('completed', async (event: { result: unknown; duration: number }) => {
       const db = getDb();
       if (!db) return;
@@ -389,12 +404,11 @@ export class AgentManager {
         } | null;
 
         const data = agentResult?.data as Record<string, unknown> | undefined;
-        const agentId = agent.getInfo().config.id;
         
         let processedCount = 0;
         let details: Record<string, unknown> = {};
 
-        // Extrai informações específicas de cada tipo de agente
+        // Extrai informações específicas de cada tipo de agente e loga detalhes
         if (agentId.includes('email-agent')) {
           const emailData = data as EmailAgentResult | undefined;
           processedCount = emailData?.processedCount || 0;
@@ -403,6 +417,23 @@ export class AgentManager {
             contractsDetected: emailData?.contractsDetected,
             financialItemsDetected: emailData?.financialItemsDetected,
           };
+
+          // Log detalhado
+          if (processedCount > 0) {
+            logger.success(`${processedCount} email(s) processado(s)`, '📧');
+            if (emailData?.classifications) {
+              const c = emailData.classifications;
+              logger.detail(`🔴 ${c.urgent} urgentes • 📌 ${c.attention} atenção • 📋 ${c.informative} informativos • 📁 ${c.low} baixa`);
+            }
+            if (emailData?.contractsDetected && emailData.contractsDetected > 0) {
+              logger.detail(`📄 ${emailData.contractsDetected} contrato(s) detectado(s)`);
+            }
+            if (emailData?.financialItemsDetected && emailData.financialItemsDetected > 0) {
+              logger.detail(`💰 ${emailData.financialItemsDetected} item(ns) financeiro(s) detectado(s)`);
+            }
+          } else {
+            logger.info('Nenhum email novo para processar', '📭');
+          }
 
           // Salva dados no banco
           if (emailData?.emails && emailData.emails.length > 0) {
@@ -415,13 +446,28 @@ export class AgentManager {
             await saveFinancialItemsToDatabase(emailData.financialItems, userId);
           }
         } else if (agentId.includes('legal-agent')) {
-          const legalData = data as { analysesCount?: number; documents?: unknown[] } | undefined;
+          const legalData = data as { 
+            analysesCount?: number; 
+            documents?: Array<{ filename?: string; riskLevel?: string; requiresAttention?: boolean }>;
+          } | undefined;
           processedCount = legalData?.analysesCount || (legalData?.documents?.length || 0);
-          details = {
-            analysesCount: processedCount,
-          };
+          details = { analysesCount: processedCount };
+
+          if (processedCount > 0) {
+            logger.success(`${processedCount} documento(s) analisado(s)`, '📋');
+            legalData?.documents?.forEach((doc) => {
+              const riskEmoji = doc.riskLevel === 'high' ? '🔴' : doc.riskLevel === 'medium' ? '🟡' : '🟢';
+              logger.detail(`${riskEmoji} ${doc.filename || 'Documento'} - Risco: ${doc.riskLevel || 'N/A'}`);
+            });
+          }
         } else if (agentId.includes('financial-agent')) {
-          const financialData = data as { itemsFound?: number; items?: unknown[]; totalAmount?: number; hasUrgentItems?: boolean; hasOverdueItems?: boolean } | undefined;
+          const financialData = data as { 
+            itemsFound?: number; 
+            items?: Array<{ creditor?: string; amount?: number; dueDate?: string; status?: string }>;
+            totalAmount?: number; 
+            hasUrgentItems?: boolean; 
+            hasOverdueItems?: boolean;
+          } | undefined;
           processedCount = financialData?.itemsFound || (financialData?.items?.length || 0);
           details = {
             itemsFound: processedCount,
@@ -429,18 +475,44 @@ export class AgentManager {
             hasUrgentItems: financialData?.hasUrgentItems,
             hasOverdueItems: financialData?.hasOverdueItems,
           };
+
+          if (processedCount > 0) {
+            logger.success(`${processedCount} cobrança(s) identificada(s)`, '💰');
+            if (financialData?.totalAmount) {
+              const total = (financialData.totalAmount / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+              logger.detail(`💵 Total: ${total}`);
+            }
+            if (financialData?.hasOverdueItems) {
+              logger.warning('Há itens vencidos!', '🔴');
+            }
+            if (financialData?.hasUrgentItems) {
+              logger.warning('Há itens urgentes!', '⚠️');
+            }
+            financialData?.items?.forEach((item) => {
+              const amount = item.amount ? (item.amount / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'N/A';
+              logger.detail(`${item.creditor}: ${amount}`);
+            });
+          }
         } else if (agentId.includes('stablecoin-agent')) {
           const stablecoinData = data as { eventsDetected?: number; anomalies?: unknown[] } | undefined;
           processedCount = stablecoinData?.eventsDetected || (stablecoinData?.anomalies?.length || 0);
-          details = {
-            eventsDetected: processedCount,
-          };
+          details = { eventsDetected: processedCount };
+
+          if (processedCount > 0) {
+            logger.success(`${processedCount} evento(s) detectado(s)`, '🪙');
+          } else {
+            logger.info('Nenhuma atividade significativa', '📊');
+          }
         }
+
+        // Log de conclusão com duração
+        const durationSec = (event.duration / 1000).toFixed(2);
+        logger.info(`Execução concluída em ${durationSec}s`, '✅');
 
         await db.insert(agentLogs).values({
           userId,
           agentId,
-          agentName: agent.getInfo().config.name,
+          agentName,
           eventType: 'completed',
           success: true,
           duration: event.duration,
@@ -448,9 +520,9 @@ export class AgentManager {
           details,
         });
 
-        console.log(`[AgentManager] 📝 Log salvo: ${agent.getInfo().config.name} - ${processedCount} item(s)`);
       } catch (error) {
         console.error(`[AgentManager] Erro ao registrar log:`, error);
+        logger.error(`Erro ao processar: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
       }
     });
 
