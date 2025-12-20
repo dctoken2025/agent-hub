@@ -3,10 +3,163 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Mail, Scale, Plus, Trash2, Save, 
   Clock, Zap, AlertTriangle, CheckCircle, Edit2, X,
-  ChevronDown, ChevronUp, ToggleLeft, ToggleRight, Coins, Calendar
+  ChevronDown, ChevronUp, ToggleLeft, ToggleRight, Coins, Calendar,
+  Lock, Lightbulb, Shield, FileText
 } from 'lucide-react';
 import { useDialog } from '../components/Dialog';
 import { apiRequest } from '@/lib/utils';
+
+// ===========================================
+// REGRAS EMBUTIDAS NO CÓDIGO (read-only)
+// ===========================================
+
+interface BuiltInRule {
+  name: string;
+  description: string;
+  priority: 'urgent' | 'attention' | 'informative' | 'low' | 'cc_only';
+  examples: string[];
+}
+
+const EMAIL_BUILTIN_RULES: BuiltInRule[] = [
+  {
+    name: 'Documentos para Assinar',
+    description: 'Emails de portais de assinatura digital são sempre marcados como urgentes',
+    priority: 'urgent',
+    examples: ['DocuSign', 'ClickSign', 'D4Sign', 'Autentique', 'ZapSign', 'Adobe Sign'],
+  },
+  {
+    name: 'Remetentes VIP',
+    description: 'Emails de remetentes marcados como VIP nas configurações recebem prioridade máxima',
+    priority: 'urgent',
+    examples: ['Configurável em Settings → Email → Remetentes VIP'],
+  },
+  {
+    name: 'Remetentes Ignorados',
+    description: 'Emails de remetentes na lista de ignorados são automaticamente marcados como baixa prioridade',
+    priority: 'low',
+    examples: ['Configurável em Settings → Email → Remetentes Ignorados'],
+  },
+  {
+    name: 'Apenas em Cópia (CC)',
+    description: 'Quando você está apenas no CC (e não no Para), o email recebe prioridade reduzida',
+    priority: 'cc_only',
+    examples: ['Emails onde seu endereço está no campo CC'],
+  },
+  {
+    name: 'Newsletters e Marketing',
+    description: 'Emails identificados como newsletters ou marketing automático são de baixa prioridade',
+    priority: 'low',
+    examples: ['noreply@', 'newsletter@', 'Unsubscribe', 'Marketing', 'Promoções'],
+  },
+  {
+    name: 'Notificações de Apps',
+    description: 'Notificações automáticas de serviços conhecidos são de baixa prioridade',
+    priority: 'low',
+    examples: ['GitHub', 'Slack', 'Trello', 'LinkedIn', 'Twitter', 'Facebook'],
+  },
+];
+
+const LEGAL_BUILTIN_RULES: BuiltInRule[] = [
+  {
+    name: 'Cláusulas de Exclusividade',
+    description: 'Detecta cláusulas de exclusividade excessiva que podem limitar seus negócios',
+    priority: 'urgent',
+    examples: ['Exclusividade total', 'Proibição de contratar concorrentes'],
+  },
+  {
+    name: 'Multas Desproporcionais',
+    description: 'Identifica multas e penalidades que parecem desproporcionais ao valor do contrato',
+    priority: 'urgent',
+    examples: ['Multa de 50% do valor', 'Penalidade sem limite'],
+  },
+  {
+    name: 'Foro Desfavorável',
+    description: 'Alerta sobre cláusulas de foro em jurisdição potencialmente desfavorável',
+    priority: 'attention',
+    examples: ['Foro em outro estado', 'Arbitragem obrigatória em outro país'],
+  },
+  {
+    name: 'Renovação Automática',
+    description: 'Detecta cláusulas de renovação automática sem aviso prévio adequado',
+    priority: 'attention',
+    examples: ['Renovação automática', 'Aviso prévio de 30 dias ou menos'],
+  },
+  {
+    name: 'Limitação de Responsabilidade',
+    description: 'Identifica quando apenas uma parte tem sua responsabilidade limitada',
+    priority: 'attention',
+    examples: ['Limitação unilateral', 'Isenção total de responsabilidade'],
+  },
+  {
+    name: 'Confidencialidade Excessiva',
+    description: 'Alerta sobre cláusulas de confidencialidade muito amplas ou por tempo indeterminado',
+    priority: 'attention',
+    examples: ['Confidencialidade perpétua', 'Tudo é confidencial'],
+  },
+];
+
+// ===========================================
+// REGRAS SUGERIDAS PARA ADICIONAR
+// ===========================================
+
+const SUGGESTED_RULES: ClassificationRule[] = [
+  {
+    id: 'suggested-banks',
+    name: 'Bancos Brasileiros',
+    enabled: true,
+    condition: { field: 'from', operator: 'regex', value: 'itau|bradesco|santander|bb\\.com|caixa|btg|xp\\.com|nubank|inter\\.co', caseSensitive: false },
+    action: { priority: 'urgent', tags: ['banco', 'financeiro'], requiresAction: true, reasoning: 'Email de instituição bancária' },
+  },
+  {
+    id: 'suggested-regulators',
+    name: 'Reguladores',
+    enabled: true,
+    condition: { field: 'from', operator: 'regex', value: 'cvm\\.gov|bcb\\.gov|anbima|b3\\.com|susep\\.gov', caseSensitive: false },
+    action: { priority: 'urgent', tags: ['regulatório', 'compliance'], requiresAction: true, reasoning: 'Email de órgão regulador' },
+  },
+  {
+    id: 'suggested-payments',
+    name: 'Pagamentos e Boletos',
+    enabled: true,
+    condition: { field: 'subject', operator: 'regex', value: 'boleto|fatura|vencimento|pagamento|cobrança', caseSensitive: false },
+    action: { priority: 'urgent', tags: ['financeiro', 'pagamento'], requiresAction: true, reasoning: 'Assunto menciona pagamento/boleto' },
+  },
+  {
+    id: 'suggested-contracts',
+    name: 'Contratos e Termos',
+    enabled: true,
+    condition: { field: 'subject', operator: 'regex', value: 'contrato|minuta|aditivo|termo|acordo', caseSensitive: false },
+    action: { priority: 'attention', tags: ['contrato', 'jurídico'], requiresAction: true, reasoning: 'Assunto menciona contrato/termo' },
+  },
+  {
+    id: 'suggested-meetings',
+    name: 'Reuniões e Agenda',
+    enabled: true,
+    condition: { field: 'subject', operator: 'regex', value: 'reunião|meeting|call|agenda|convite', caseSensitive: false },
+    action: { priority: 'attention', tags: ['reunião', 'agenda'], requiresAction: false, reasoning: 'Convite ou discussão sobre reunião' },
+  },
+  {
+    id: 'suggested-lawyers',
+    name: 'Escritórios de Advocacia',
+    enabled: true,
+    condition: { field: 'from', operator: 'regex', value: 'advocacia|advogados|law|legal|juridico', caseSensitive: false },
+    action: { priority: 'attention', tags: ['jurídico'], requiresAction: true, reasoning: 'Email de escritório jurídico' },
+  },
+  {
+    id: 'suggested-audit',
+    name: 'Auditoria e Consultoria',
+    enabled: true,
+    condition: { field: 'from', operator: 'regex', value: 'deloitte|ey\\.com|kpmg|pwc|ernst|young', caseSensitive: false },
+    action: { priority: 'attention', tags: ['auditoria', 'consultoria'], requiresAction: true, reasoning: 'Email de auditoria/consultoria' },
+  },
+  {
+    id: 'suggested-urgent',
+    name: 'Urgente no Assunto',
+    enabled: true,
+    condition: { field: 'subject', operator: 'regex', value: 'urgent|urgente|asap|imediato|crítico|critical', caseSensitive: false },
+    action: { priority: 'urgent', tags: ['urgente'], requiresAction: true, reasoning: 'Assunto marcado como urgente' },
+  },
+];
 
 interface ClassificationRule {
   id: string;
@@ -381,20 +534,80 @@ export default function AgentConfig() {
               </button>
             </div>
 
-            {/* Regras de Classificação */}
+            {/* Regras Embutidas (Built-in) */}
+            <div className="border-t pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Lock className="h-4 w-4 text-muted-foreground" />
+                <h4 className="font-medium">Regras Automáticas (Embutidas)</h4>
+                <span className="text-xs bg-muted px-2 py-0.5 rounded">Sempre ativas</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Essas regras estão embutidas no código e são aplicadas automaticamente antes da análise por IA.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {EMAIL_BUILTIN_RULES.map((rule, idx) => (
+                  <div key={idx} className="p-3 border rounded-lg bg-muted/20">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">{priorityConfig[rule.priority]?.icon}</span>
+                      <span className="font-medium text-sm">{rule.name}</span>
+                      <span className={`ml-auto px-1.5 py-0.5 rounded text-xs text-white ${priorityConfig[rule.priority]?.color}`}>
+                        {priorityConfig[rule.priority]?.label}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-1">{rule.description}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {rule.examples.slice(0, 4).map((ex, i) => (
+                        <span key={i} className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{ex}</span>
+                      ))}
+                      {rule.examples.length > 4 && (
+                        <span className="text-xs text-muted-foreground">+{rule.examples.length - 4}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Regras de Classificação Personalizadas */}
             <div className="border-t pt-4">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-medium flex items-center gap-2">
                   <Zap className="h-4 w-4" />
-                  Regras de Classificação Personalizadas
+                  Regras Personalizadas
                 </h4>
-                <button
-                  onClick={() => setShowNewRule(true)}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
-                >
-                  <Plus className="h-4 w-4" />
-                  Nova Regra
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      const existingIds = (data?.emailAgent?.customRules || []).map(r => r.id);
+                      const newRules = SUGGESTED_RULES.filter(r => !existingIds.includes(r.id));
+                      if (newRules.length === 0) {
+                        dialog.success('Todas as regras sugeridas já foram adicionadas!');
+                        return;
+                      }
+                      if (await dialog.confirm(`Adicionar ${newRules.length} regras sugeridas para melhor classificação?`)) {
+                        for (const rule of newRules) {
+                          await apiRequest('/config/agents/email/rules', {
+                            method: 'POST',
+                            body: JSON.stringify(rule),
+                          });
+                        }
+                        queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
+                        dialog.success(`${newRules.length} regras adicionadas com sucesso!`);
+                      }
+                    }}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-amber-100 text-amber-700 border border-amber-300 rounded-lg text-sm hover:bg-amber-200"
+                  >
+                    <Lightbulb className="h-4 w-4" />
+                    Sugerir Regras
+                  </button>
+                  <button
+                    onClick={() => setShowNewRule(true)}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Nova Regra
+                  </button>
+                </div>
               </div>
 
               {/* Nova Regra Form */}
@@ -508,6 +721,45 @@ export default function AgentConfig() {
 
         {expandedSection === 'legal' && (
           <div className="p-4 border-t space-y-6">
+            {/* Regras Embutidas do Legal Agent */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="h-4 w-4 text-muted-foreground" />
+                <h4 className="font-medium">Análise Automática por IA</h4>
+                <span className="text-xs bg-muted px-2 py-0.5 rounded">Powered by Claude</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                O agente jurídico usa IA para analisar contratos e identificar automaticamente os seguintes riscos:
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {LEGAL_BUILTIN_RULES.map((rule, idx) => (
+                  <div key={idx} className="p-3 border rounded-lg bg-muted/20">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">{priorityConfig[rule.priority]?.icon}</span>
+                      <span className="font-medium text-sm">{rule.name}</span>
+                      <span className={`ml-auto px-1.5 py-0.5 rounded text-xs text-white ${priorityConfig[rule.priority]?.color}`}>
+                        {priorityConfig[rule.priority]?.label}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-1">{rule.description}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {rule.examples.map((ex, i) => (
+                        <span key={i} className="text-xs bg-muted px-1.5 py-0.5 rounded">{ex}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Configurações do Legal Agent */}
+            <div className="border-t pt-4">
+              <h4 className="font-medium flex items-center gap-2 mb-3">
+                <FileText className="h-4 w-4" />
+                Configurações de Processamento
+              </h4>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Análise automática</label>
