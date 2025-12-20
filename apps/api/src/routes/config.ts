@@ -241,13 +241,31 @@ export async function loadUserConfig(userId: string): Promise<{
 
     if (!config) return defaults;
 
+    // Mescla configurações do banco com defaults para garantir que todos os campos existam
+    const emailAgentFromDb = config.emailAgentConfig as Partial<EmailAgentSettings> | null;
+    const legalAgentFromDb = config.legalAgentConfig as Partial<LegalAgentSettings> | null;
+    const stablecoinAgentFromDb = config.stablecoinAgentConfig as Partial<StablecoinAgentSettings> | null;
+    const financialAgentFromDb = config.financialAgentConfig as Partial<FinancialAgentSettings> | null;
+
     return {
       vipSenders: config.vipSenders || defaults.vipSenders,
       ignoreSenders: config.ignoreSenders || defaults.ignoreSenders,
-      emailAgent: (config.emailAgentConfig as EmailAgentSettings) || defaults.emailAgent,
-      legalAgent: (config.legalAgentConfig as LegalAgentSettings) || defaults.legalAgent,
-      stablecoinAgent: (config.stablecoinAgentConfig as StablecoinAgentSettings) || defaults.stablecoinAgent,
-      financialAgent: (config.financialAgentConfig as FinancialAgentSettings) || defaults.financialAgent,
+      emailAgent: {
+        ...defaults.emailAgent,
+        ...emailAgentFromDb,
+      } as EmailAgentSettings,
+      legalAgent: {
+        ...defaults.legalAgent,
+        ...legalAgentFromDb,
+      } as LegalAgentSettings,
+      stablecoinAgent: {
+        ...defaults.stablecoinAgent,
+        ...stablecoinAgentFromDb,
+      } as StablecoinAgentSettings,
+      financialAgent: {
+        ...defaults.financialAgent,
+        ...financialAgentFromDb,
+      } as FinancialAgentSettings,
       notifications: (config.notificationConfig as NotificationSettings) || defaults.notifications,
     };
   } catch (error) {
