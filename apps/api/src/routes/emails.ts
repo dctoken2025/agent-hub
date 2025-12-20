@@ -464,7 +464,8 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
         process.env.GMAIL_CLIENT_SECRET = globalConfig.gmail.clientSecret;
 
         const gmailClient = new GmailClient();
-        await gmailClient.initialize();
+        // Usa tokens do banco de dados
+        await gmailClient.initializeWithTokens(user.gmailTokens as Record<string, unknown>);
 
         await gmailClient.markAsRead(emailId);
 
@@ -539,7 +540,8 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
         process.env.GMAIL_CLIENT_SECRET = globalConfig.gmail.clientSecret;
 
         const gmailClient = new GmailClient();
-        await gmailClient.initialize();
+        // Usa tokens do banco de dados
+        await gmailClient.initializeWithTokens(user.gmailTokens as Record<string, unknown>);
 
         let markedCount = 0;
         const errors: string[] = [];
@@ -631,7 +633,8 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
         process.env.GMAIL_CLIENT_SECRET = globalConfig.gmail.clientSecret;
 
         const gmailClient = new GmailClient();
-        await gmailClient.initialize();
+        // Usa tokens do banco de dados
+        await gmailClient.initializeWithTokens(user.gmailTokens as Record<string, unknown>);
 
         let archivedCount = 0;
 
@@ -713,7 +716,8 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
       process.env.GMAIL_CLIENT_SECRET = globalConfig.gmail.clientSecret;
 
       const gmailClient = new GmailClient();
-      await gmailClient.initialize();
+      // Usa tokens do banco de dados
+      await gmailClient.initializeWithTokens(user.gmailTokens as Record<string, unknown>);
 
       // Envia o email
       await gmailClient.sendEmail({
