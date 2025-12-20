@@ -12,6 +12,7 @@ export interface AgentConfig {
   description: string;
   enabled: boolean;
   schedule?: ScheduleConfig;
+  userId?: string; // ID do usuário dono do agente (para rastreamento de uso de AI)
 }
 
 export interface ScheduleConfig {
@@ -115,6 +116,7 @@ export const AgentConfigSchema = z.object({
     type: z.enum(['interval', 'cron', 'manual']),
     value: z.union([z.string(), z.number()]).optional(),
   }).optional(),
+  userId: z.string().optional(), // ID do usuário dono do agente (para rastreamento de uso de AI)
 });
 
 export const NotificationSchema = z.object({

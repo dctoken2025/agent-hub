@@ -152,6 +152,7 @@ export class AgentManager {
               type: 'interval',
               value: userConfig.emailAgent.intervalMinutes,
             },
+            userId, // Rastreamento de uso de AI por usuário
           },
           emailConfig,
           notifier
@@ -209,6 +210,7 @@ export class AgentManager {
             schedule: {
               type: 'manual',
             },
+            userId, // Rastreamento de uso de AI por usuário
           },
           legalConfig,
           notifier
@@ -251,6 +253,7 @@ export class AgentManager {
             schedule: {
               type: 'manual',
             },
+            userId, // Rastreamento de uso de AI por usuário
           },
           financialConfig,
           notifier
@@ -291,6 +294,7 @@ export class AgentManager {
           schedule: {
             type: 'manual',
           },
+          userId, // Rastreamento de uso de AI por usuário
         },
         {
           // Configuração padrão - pode ser customizada futuramente
@@ -351,6 +355,7 @@ export class AgentManager {
                 type: 'interval',
                 value: userConfig.stablecoinAgent.checkInterval,
               },
+              userId, // Rastreamento de uso de AI por usuário
             },
             agentConfig,
             notifier

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import type { AgentConfig, AgentResult, AgentStatus, AgentEvent } from './types.js';
+import { runWithAIContext } from './ai-context.js';
 
 /**
  * Classe base abstrata para todos os agentes autônomos.
@@ -137,34 +138,43 @@ export abstract class Agent<TInput = unknown, TOutput = unknown> extends EventEm
     this.lastRun = new Date();
     this.runCount++;
 
-    try {
-      console.log(`[${this.config.name}] Executando... (run #${this.runCount})`);
-      
-      const result = await this.execute(input);
-      const duration = Date.now() - startTime;
-      
-      if (result.success) {
-        this.emitEvent('completed', { result, duration });
-      } else {
-        this.emitEvent('failed', { error: result.error, duration });
+    // Executa dentro do contexto de AI para rastrear uso por usuário/agente
+    const aiContext = {
+      userId: this.config.userId,
+      agentId: this.config.id,
+      operation: this.config.name,
+    };
+
+    return runWithAIContext(aiContext, async () => {
+      try {
+        console.log(`[${this.config.name}] Executando... (run #${this.runCount})`);
+        
+        const result = await this.execute(input);
+        const duration = Date.now() - startTime;
+        
+        if (result.success) {
+          this.emitEvent('completed', { result, duration });
+        } else {
+          this.emitEvent('failed', { error: result.error, duration });
+        }
+
+        return {
+          ...result,
+          duration,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+        this.status = 'error';
+        this.emitEvent('failed', { error: errorMessage });
+
+        return {
+          success: false,
+          error: errorMessage,
+          timestamp: new Date(),
+          duration: Date.now() - startTime,
+        };
       }
-
-      return {
-        ...result,
-        duration,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      this.status = 'error';
-      this.emitEvent('failed', { error: errorMessage });
-
-      return {
-        success: false,
-        error: errorMessage,
-        timestamp: new Date(),
-        duration: Date.now() - startTime,
-      };
-    }
+    });
   }
 
   /**
