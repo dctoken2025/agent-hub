@@ -4,7 +4,7 @@ import {
   Mail, Scale, Plus, Trash2, Save, 
   Clock, Zap, AlertTriangle, CheckCircle, Edit2, X,
   ChevronDown, ChevronUp, ToggleLeft, ToggleRight, Coins, Calendar,
-  Lock, Lightbulb, Shield, FileText, DollarSign, Receipt
+  Lock, Lightbulb, Shield, FileText, DollarSign, Receipt, CheckSquare, Info
 } from 'lucide-react';
 import { useDialog } from '../components/Dialog';
 import { apiRequest } from '@/lib/utils';
@@ -266,7 +266,7 @@ const operatorLabels = {
 export default function AgentConfig() {
   const queryClient = useQueryClient();
   const dialog = useDialog();
-  const [expandedSection, setExpandedSection] = useState<'email' | 'legal' | 'financial' | 'stablecoin' | null>('email');
+  const [expandedSection, setExpandedSection] = useState<'email' | 'legal' | 'financial' | 'stablecoin' | 'task' | null>('email');
   const [editingRule, setEditingRule] = useState<ClassificationRule | null>(null);
   const [showNewRule, setShowNewRule] = useState(false);
   const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
@@ -1296,6 +1296,133 @@ Exemplos:
           </div>
         )}
       </div>
+
+      {/* Task Agent Config */}
+      <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
+        <button
+          onClick={() => setExpandedSection(expandedSection === 'task' ? null : 'task')}
+          className="w-full p-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
+              <CheckSquare className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="text-left">
+              <h3 className="font-semibold">Task Agent</h3>
+              <p className="text-sm text-muted-foreground">
+                Extrai tarefas e action items de emails importantes
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`px-2 py-1 rounded text-xs font-medium ${data?.emailAgent?.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+              {data?.emailAgent?.enabled ? 'Ativo' : 'Inativo'}
+            </span>
+            {expandedSection === 'task' ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+          </div>
+        </button>
+
+        {expandedSection === 'task' && (
+          <div className="p-4 border-t space-y-6">
+            {/* Info Box */}
+            <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <Info className="h-5 w-5 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
+                <div className="space-y-2 text-sm">
+                  <p className="font-medium text-purple-800 dark:text-purple-200">
+                    Como funciona o Task Agent
+                  </p>
+                  <ul className="space-y-1 text-purple-700 dark:text-purple-300">
+                    <li>• É executado automaticamente junto com o Email Agent</li>
+                    <li>• Detecta emails com perguntas, solicitações e pendências</li>
+                    <li>• Extrai stakeholders, prazos e contexto do projeto</li>
+                    <li>• Gera sugestões de resposta profissional</li>
+                    <li>• As tarefas extraídas aparecem na página "Tarefas"</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* O que o Task Agent detecta */}
+            <div>
+              <h4 className="font-medium mb-3 flex items-center gap-2">
+                <Zap className="h-4 w-4 text-purple-500" />
+                Padrões Detectados Automaticamente
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="font-medium text-sm">Perguntas Diretas</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    "Como estamos?", "Podem confirmar?", "Tudo certo?"
+                  </p>
+                </div>
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="font-medium text-sm">Solicitações</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    "Gostaria de saber", "Favor informar", "Solicito"
+                  </p>
+                </div>
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="font-medium text-sm">Prazos</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    "Até quando", "Prazo", "Deadline", "Previsão"
+                  </p>
+                </div>
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="font-medium text-sm">Pendências</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    "Aguardando", "Pendente", "Falta", "Próximos passos"
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Categorias de Tarefas */}
+            <div>
+              <h4 className="font-medium mb-3 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-purple-500" />
+                Categorias de Tarefas Extraídas
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                  Confirmação
+                </span>
+                <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                  Status Update
+                </span>
+                <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                  Deadline
+                </span>
+                <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
+                  Documento
+                </span>
+                <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                  Aprovação
+                </span>
+                <span className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium">
+                  Ação Necessária
+                </span>
+                <span className="px-3 py-1 bg-pink-100 text-pink-700 rounded-full text-xs font-medium">
+                  Pergunta
+                </span>
+                <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+                  Informativo
+                </span>
+                <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
+                  Follow-up
+                </span>
+              </div>
+            </div>
+
+            {/* Nota */}
+            <div className="text-sm text-muted-foreground bg-muted/30 rounded-lg p-3">
+              <strong>Nota:</strong> O Task Agent é ativado/desativado junto com o Email Agent. 
+              Para habilitá-lo, certifique-se de que o Email Agent está ativo nas configurações acima.
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Modal de Sugestões de Regras */}
       {showSuggestionsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
