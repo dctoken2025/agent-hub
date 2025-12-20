@@ -18,7 +18,10 @@ import {
   ChevronUp,
   Search,
   RefreshCw,
-  Brain
+  Brain,
+  Unlock,
+  Timer,
+  Infinity
 } from 'lucide-react';
 import { cn, apiRequest } from '@/lib/utils';
 
@@ -36,11 +39,14 @@ interface UserData {
   email: string;
   name: string | null;
   role: 'admin' | 'user';
-  accountStatus: 'pending' | 'active' | 'suspended';
+  accountStatus: 'pending' | 'active' | 'suspended' | 'trial_expired';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
   hasGmailConnected: boolean;
+  trialEndsAt: string | null;
+  trialDaysRemaining: number | null;
+  isTrialExpired: boolean;
   stats: UserStats;
 }
 
@@ -92,6 +98,18 @@ export function Users() {
     },
   });
 
+  // Mutação para liberar trial (acesso permanente)
+  const unlockMutation = useMutation({
+    mutationFn: (userId: string) =>
+      apiRequest(`/admin/users/${userId}/unlock`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
+    },
+  });
+
   const users = usersData?.users || [];
   const stats = statsData;
 
@@ -104,16 +122,22 @@ export function Users() {
     return matchesSearch && matchesStatus;
   });
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: string, isTrialExpired?: boolean) => {
+    if (isTrialExpired) return <Timer className="w-4 h-4 text-orange-500" />;
     switch (status) {
       case 'active': return <CheckCircle2 className="w-4 h-4 text-green-500" />;
       case 'pending': return <Clock className="w-4 h-4 text-yellow-500" />;
       case 'suspended': return <Ban className="w-4 h-4 text-red-500" />;
+      case 'trial_expired': return <Timer className="w-4 h-4 text-orange-500" />;
       default: return <AlertCircle className="w-4 h-4 text-gray-500" />;
     }
   };
 
-  const getStatusLabel = (status: string) => {
+  const getStatusLabel = (status: string, isTrialExpired?: boolean, trialDaysRemaining?: number | null) => {
+    if (isTrialExpired || status === 'trial_expired') return 'Trial Expirado';
+    if (status === 'active' && typeof trialDaysRemaining === 'number' && trialDaysRemaining > 0) {
+      return `Trial: ${trialDaysRemaining}d`;
+    }
     switch (status) {
       case 'active': return 'Ativo';
       case 'pending': return 'Pendente';
@@ -122,7 +146,13 @@ export function Users() {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string, isTrialExpired?: boolean, trialDaysRemaining?: number | null) => {
+    if (isTrialExpired || status === 'trial_expired') return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
+    if (status === 'active' && typeof trialDaysRemaining === 'number' && trialDaysRemaining > 0) {
+      return trialDaysRemaining <= 2 
+        ? 'bg-orange-500/10 text-orange-500 border-orange-500/20'
+        : 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+    }
     switch (status) {
       case 'active': return 'bg-green-500/10 text-green-500 border-green-500/20';
       case 'pending': return 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
@@ -280,16 +310,23 @@ export function Users() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                  {/* Status Badge */}
+                  {/* Trial/Status Badge */}
                   <div className={cn(
                     "px-3 py-1 rounded-full border flex items-center gap-2",
-                    getStatusColor(user.accountStatus)
+                    getStatusColor(user.accountStatus, user.isTrialExpired, user.trialDaysRemaining)
                   )}>
-                    {getStatusIcon(user.accountStatus)}
+                    {getStatusIcon(user.accountStatus, user.isTrialExpired)}
                     <span className="text-sm font-medium">
-                      {getStatusLabel(user.accountStatus)}
+                      {getStatusLabel(user.accountStatus, user.isTrialExpired, user.trialDaysRemaining)}
                     </span>
                   </div>
+                  
+                  {/* Ícone de acesso permanente */}
+                  {user.role !== 'admin' && user.trialEndsAt === null && user.accountStatus === 'active' && (
+                    <div className="flex items-center gap-1 text-green-500" title="Acesso Permanente">
+                      <Infinity className="w-4 h-4" />
+                    </div>
+                  )}
 
                   {/* Quick Stats */}
                   <div className="hidden md:flex items-center gap-4 text-sm text-muted-foreground">
@@ -326,6 +363,29 @@ export function Users() {
                           <p className="text-sm flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
                             {new Date(user.createdAt).toLocaleDateString('pt-BR')}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Acesso</p>
+                          <p className="text-sm flex items-center gap-1">
+                            {user.trialEndsAt === null ? (
+                              <>
+                                <Infinity className="w-3 h-3 text-green-500" />
+                                <span className="text-green-500">Permanente</span>
+                              </>
+                            ) : user.isTrialExpired ? (
+                              <>
+                                <Timer className="w-3 h-3 text-red-500" />
+                                <span className="text-red-500">Trial Expirado</span>
+                              </>
+                            ) : (
+                              <>
+                                <Timer className="w-3 h-3 text-blue-500" />
+                                <span className="text-blue-500">
+                                  Trial: {user.trialDaysRemaining}d restantes
+                                </span>
+                              </>
+                            )}
                           </p>
                         </div>
                         <div>
@@ -399,6 +459,18 @@ export function Users() {
                   {/* Actions */}
                   {user.role !== 'admin' && (
                     <div className="mt-6 pt-4 border-t flex flex-wrap gap-2">
+                      {/* Botão de Liberar Permanentemente */}
+                      {user.trialEndsAt !== null && (
+                        <button
+                          onClick={() => unlockMutation.mutate(user.id)}
+                          disabled={unlockMutation.isPending}
+                          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors disabled:opacity-50"
+                        >
+                          <Unlock className="w-4 h-4" />
+                          Liberar Permanentemente
+                        </button>
+                      )}
+                      
                       {user.accountStatus !== 'active' && (
                         <button
                           onClick={() => statusMutation.mutate({ userId: user.id, status: 'active' })}

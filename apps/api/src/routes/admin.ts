@@ -28,6 +28,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         isActive: users.isActive,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
+        trialEndsAt: users.trialEndsAt,
         hasGmailConnected: sql<boolean>`gmail_tokens IS NOT NULL`,
       })
       .from(users)
@@ -74,8 +75,22 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
             .from(userConfigs)
             .where(eq(userConfigs.userId, user.id));
 
+          // Calcula dias restantes do trial
+          let trialDaysRemaining: number | null = null;
+          let isTrialExpired = false;
+          
+          if (user.trialEndsAt && user.role !== 'admin') {
+            const now = new Date();
+            const diffTime = user.trialEndsAt.getTime() - now.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            trialDaysRemaining = Math.max(0, diffDays);
+            isTrialExpired = diffDays <= 0;
+          }
+
           return {
             ...user,
+            trialDaysRemaining,
+            isTrialExpired,
             stats: {
               emailsProcessed: emailCount?.count || 0,
               legalAnalyses: legalCount?.count || 0,
@@ -285,6 +300,54 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     } catch (error) {
       console.error('[Admin] Erro ao alterar status:', error);
       return reply.status(500).send({ error: 'Erro ao alterar status' });
+    }
+  });
+
+  // ===========================================
+  // Liberar trial do usuário (acesso permanente)
+  // ===========================================
+  app.post<{
+    Params: { id: string };
+  }>('/users/:id/unlock', async (request, reply) => {
+    const db = getDb();
+    if (!db) {
+      return reply.status(500).send({ error: 'Banco de dados não disponível' });
+    }
+
+    const { id } = request.params;
+
+    try {
+      // Verifica se o usuário existe
+      const [user] = await db.select().from(users).where(eq(users.id, id));
+      if (!user) {
+        return reply.status(404).send({ error: 'Usuário não encontrado' });
+      }
+
+      // Remove o limite de trial e ativa a conta
+      await db.update(users)
+        .set({ 
+          trialEndsAt: null,
+          accountStatus: 'active',
+          isActive: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, id));
+
+      console.log(`[Admin] Usuário ${user.email} liberado permanentemente (trial removido)`);
+
+      return { 
+        success: true, 
+        message: 'Usuário liberado permanentemente',
+        user: {
+          id,
+          email: user.email,
+          accountStatus: 'active',
+          trialEndsAt: null,
+        },
+      };
+    } catch (error) {
+      console.error('[Admin] Erro ao liberar usuário:', error);
+      return reply.status(500).send({ error: 'Erro ao liberar usuário' });
     }
   });
 
