@@ -8,6 +8,7 @@
 import { AgentScheduler, Notifier, type Agent } from '@agent-hub/core';
 import { EmailAgent, type EmailAgentConfig, type EmailAgentResult } from '@agent-hub/email-agent';
 import { LegalAgent, type LegalAgentConfig } from '@agent-hub/legal-agent';
+import { FinancialAgent, type FinancialAgentConfig } from '@agent-hub/financial-agent';
 import { StablecoinAgent, type StablecoinAgentConfig } from '@agent-hub/stablecoin-agent';
 import { getDb, users, agentLogs, stablecoins, stablecoinEvents, stablecoinAnomalies, supplySnapshots } from '../db/index.js';
 import { eq } from 'drizzle-orm';
@@ -19,6 +20,7 @@ interface UserAgentSet {
   scheduler: AgentScheduler;
   emailAgent?: EmailAgent;
   legalAgent?: LegalAgent;
+  financialAgent?: FinancialAgent;
   stablecoinAgent?: StablecoinAgent;
 }
 
@@ -170,6 +172,48 @@ export class AgentManager {
         console.log(`[AgentManager] ✅ Legal Agent iniciado para usuário ${userId}`);
       } catch (error) {
         console.error(`[AgentManager] ❌ Erro ao inicializar Legal Agent:`, error);
+      }
+    }
+
+    // ===========================================
+    // Inicializa Financial Agent
+    // ===========================================
+    if (userConfig.financialAgent.enabled && globalConfig.anthropic.apiKey) {
+      try {
+        // Define API Key da Anthropic
+        process.env.ANTHROPIC_API_KEY = globalConfig.anthropic.apiKey;
+
+        const financialConfig: FinancialAgentConfig = {
+          financialKeywords: userConfig.financialAgent.financialKeywords,
+          supportedMimeTypes: ['application/pdf', 'image/png', 'image/jpeg'],
+          maxAttachmentSize: 5 * 1024 * 1024, // 5MB
+          urgentDaysBeforeDue: userConfig.financialAgent.urgentDaysBeforeDue,
+          approvalThreshold: userConfig.financialAgent.approvalThreshold,
+        };
+
+        const financialAgent = new FinancialAgent(
+          {
+            id: `financial-agent-${userId}`,
+            name: 'Financial Agent',
+            description: 'Agente de análise de cobranças e pagamentos',
+            enabled: true,
+            schedule: {
+              type: 'manual',
+            },
+          },
+          financialConfig,
+          notifier
+        );
+
+        // Registra eventos para logging
+        this.setupAgentLogging(financialAgent, userId);
+
+        scheduler.register(financialAgent);
+        agentSet.financialAgent = financialAgent;
+
+        console.log(`[AgentManager] ✅ Financial Agent iniciado para usuário ${userId}`);
+      } catch (error) {
+        console.error(`[AgentManager] ❌ Erro ao inicializar Financial Agent:`, error);
       }
     }
 
