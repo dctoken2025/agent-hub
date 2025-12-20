@@ -520,7 +520,19 @@ export default function AgentConfig() {
                 <input
                   type="date"
                   value={emailForm.startDate ? emailForm.startDate.split('T')[0] : ''}
+                  min={new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                  max={new Date().toISOString().split('T')[0]}
                   onChange={(e) => {
+                    if (e.target.value) {
+                      const selectedDate = new Date(e.target.value);
+                      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                      sevenDaysAgo.setHours(0, 0, 0, 0);
+                      
+                      if (selectedDate < sevenDaysAgo) {
+                        alert('A data não pode ser maior que 7 dias atrás para evitar sobrecarga no processamento.');
+                        return;
+                      }
+                    }
                     const date = e.target.value ? new Date(e.target.value + 'T00:00:00-03:00').toISOString() : undefined;
                     setEmailForm({ ...emailForm, startDate: date });
                     setEmailChanged(true);
@@ -528,7 +540,7 @@ export default function AgentConfig() {
                   className="w-full px-3 py-2 border rounded-lg bg-background"
                 />
                 <p className="text-xs text-muted-foreground">
-                  O agente só buscará emails a partir desta data. Deixe vazio para buscar todos.
+                  O agente só buscará emails a partir desta data. <strong>Máximo: 7 dias atrás.</strong>
                 </p>
               </div>
               <div className="space-y-2">

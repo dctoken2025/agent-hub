@@ -688,7 +688,20 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
       try {
         const userId = request.user!.id;
         const currentConfig = await loadUserConfig(userId);
-        
+
+        // Validação: startDate não pode ser maior que 7 dias atrás
+        if (request.body.startDate) {
+          const startDate = new Date(request.body.startDate);
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          
+          if (startDate < sevenDaysAgo) {
+            return reply.status(400).send({
+              success: false,
+              error: 'A data base não pode ser maior que 7 dias atrás. Isso evita sobrecarga no processamento.',
+            });
+          }
+        }
+
         const updated: EmailAgentSettings = {
           ...currentConfig.emailAgent,
           ...request.body,
