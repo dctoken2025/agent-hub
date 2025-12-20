@@ -11,7 +11,8 @@ import {
   Filter,
   Terminal,
   DollarSign,
-  Coins
+  Coins,
+  CheckSquare
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { cn, apiRequest } from '@/lib/utils';
@@ -106,6 +107,7 @@ export function Logs() {
     if (agentId.includes('legal')) return <FileText className="h-4 w-4" />;
     if (agentId.includes('financial')) return <DollarSign className="h-4 w-4" />;
     if (agentId.includes('stablecoin')) return <Coins className="h-4 w-4" />;
+    if (agentId.includes('task')) return <CheckSquare className="h-4 w-4" />;
     return <Bot className="h-4 w-4" />;
   };
 
@@ -124,6 +126,7 @@ export function Logs() {
     if (agentId.includes('legal')) return 'text-purple-400';
     if (agentId.includes('financial')) return 'text-green-400';
     if (agentId.includes('stablecoin')) return 'text-yellow-400';
+    if (agentId.includes('task')) return 'text-pink-400';
     return 'text-gray-400';
   };
 
@@ -276,6 +279,18 @@ export function Logs() {
         >
           <Coins className="h-3.5 w-3.5" />
           Stablecoin
+        </button>
+        <button
+          onClick={() => setSelectedAgent(selectedAgent === 'task' ? null : 'task')}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
+            selectedAgent === 'task'
+              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+              : 'bg-secondary hover:bg-secondary/80'
+          )}
+        >
+          <CheckSquare className="h-3.5 w-3.5" />
+          Tarefas
         </button>
       </div>
 
@@ -440,6 +455,16 @@ export function Logs() {
                                 <span className="mr-4">🪙 {log.processedCount} evento(s) detectado(s)</span>
                               ) : (
                                 <span className="text-muted-foreground">📊 Nenhuma atividade significativa</span>
+                              )}
+                            </>
+                          )}
+                          {/* Task Agent */}
+                          {log.agentId.includes('task') && (
+                            <>
+                              {log.processedCount > 0 ? (
+                                <span className="mr-4">📋 {log.processedCount} tarefa(s) extraída(s)</span>
+                              ) : (
+                                <span className="text-muted-foreground">📝 Nenhuma tarefa detectada</span>
                               )}
                             </>
                           )}
