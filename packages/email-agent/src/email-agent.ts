@@ -114,6 +114,22 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
   }
 
   /**
+   * Injeta uma instância externa do Legal Agent (com listeners configurados).
+   */
+  setLegalAgent(legalAgent: LegalAgent): void {
+    this.legalAgent = legalAgent;
+    console.log('[EmailAgent] Legal Agent externo injetado');
+  }
+
+  /**
+   * Injeta uma instância externa do Financial Agent (com listeners configurados).
+   */
+  setFinancialAgent(financialAgent: FinancialAgent): void {
+    this.financialAgent = financialAgent;
+    console.log('[EmailAgent] Financial Agent externo injetado');
+  }
+
+  /**
    * Define regras de classificação personalizadas.
    */
   setCustomRules(rules: ClassificationRule[]): void {

@@ -211,10 +211,20 @@ export class AgentManager {
         scheduler.register(financialAgent);
         agentSet.financialAgent = financialAgent;
 
+        // Injeta no Email Agent para que use a mesma instância com logging
+        if (agentSet.emailAgent) {
+          agentSet.emailAgent.setFinancialAgent(financialAgent);
+        }
+
         console.log(`[AgentManager] ✅ Financial Agent iniciado para usuário ${userId}`);
       } catch (error) {
         console.error(`[AgentManager] ❌ Erro ao inicializar Financial Agent:`, error);
       }
+    }
+
+    // Injeta Legal Agent no Email Agent também
+    if (agentSet.legalAgent && agentSet.emailAgent) {
+      agentSet.emailAgent.setLegalAgent(agentSet.legalAgent);
     }
 
     // ===========================================
@@ -375,43 +385,70 @@ export class AgentManager {
       try {
         const agentResult = event.result as {
           success?: boolean;
-          data?: EmailAgentResult;
+          data?: unknown;
         } | null;
 
-        const data = agentResult?.data;
+        const data = agentResult?.data as Record<string, unknown> | undefined;
+        const agentId = agent.getInfo().config.id;
+        
+        let processedCount = 0;
+        let details: Record<string, unknown> = {};
 
-        // Se for o Email Agent, salva os dados no banco
-        if (data && agent.getInfo().config.id.includes('email-agent')) {
-          // Salva emails classificados
-          if (data.emails && data.emails.length > 0) {
-            await saveEmailsToDatabase(data.emails, userId);
+        // Extrai informações específicas de cada tipo de agente
+        if (agentId.includes('email-agent')) {
+          const emailData = data as EmailAgentResult | undefined;
+          processedCount = emailData?.processedCount || 0;
+          details = {
+            classifications: emailData?.classifications,
+            contractsDetected: emailData?.contractsDetected,
+            financialItemsDetected: emailData?.financialItemsDetected,
+          };
+
+          // Salva dados no banco
+          if (emailData?.emails && emailData.emails.length > 0) {
+            await saveEmailsToDatabase(emailData.emails, userId);
           }
-          
-          // Salva análises jurídicas
-          if (data.legalAnalyses && data.legalAnalyses.length > 0) {
-            await saveLegalAnalysesToDatabase(data.legalAnalyses, userId);
+          if (emailData?.legalAnalyses && emailData.legalAnalyses.length > 0) {
+            await saveLegalAnalysesToDatabase(emailData.legalAnalyses, userId);
           }
-          
-          // Salva itens financeiros
-          if (data.financialItems && data.financialItems.length > 0) {
-            await saveFinancialItemsToDatabase(data.financialItems, userId);
+          if (emailData?.financialItems && emailData.financialItems.length > 0) {
+            await saveFinancialItemsToDatabase(emailData.financialItems, userId);
           }
+        } else if (agentId.includes('legal-agent')) {
+          const legalData = data as { analysesCount?: number; documents?: unknown[] } | undefined;
+          processedCount = legalData?.analysesCount || (legalData?.documents?.length || 0);
+          details = {
+            analysesCount: processedCount,
+          };
+        } else if (agentId.includes('financial-agent')) {
+          const financialData = data as { itemsFound?: number; items?: unknown[]; totalAmount?: number; hasUrgentItems?: boolean; hasOverdueItems?: boolean } | undefined;
+          processedCount = financialData?.itemsFound || (financialData?.items?.length || 0);
+          details = {
+            itemsFound: processedCount,
+            totalAmount: financialData?.totalAmount,
+            hasUrgentItems: financialData?.hasUrgentItems,
+            hasOverdueItems: financialData?.hasOverdueItems,
+          };
+        } else if (agentId.includes('stablecoin-agent')) {
+          const stablecoinData = data as { eventsDetected?: number; anomalies?: unknown[] } | undefined;
+          processedCount = stablecoinData?.eventsDetected || (stablecoinData?.anomalies?.length || 0);
+          details = {
+            eventsDetected: processedCount,
+          };
         }
 
         await db.insert(agentLogs).values({
           userId,
-          agentId: agent.getInfo().config.id,
+          agentId,
           agentName: agent.getInfo().config.name,
           eventType: 'completed',
           success: true,
           duration: event.duration,
-          processedCount: data?.processedCount || 0,
-          details: {
-            classifications: data?.classifications,
-            contractsDetected: data?.contractsDetected,
-            financialItemsDetected: data?.financialItemsDetected,
-          },
+          processedCount,
+          details,
         });
+
+        console.log(`[AgentManager] 📝 Log salvo: ${agent.getInfo().config.name} - ${processedCount} item(s)`);
       } catch (error) {
         console.error(`[AgentManager] Erro ao registrar log:`, error);
       }
