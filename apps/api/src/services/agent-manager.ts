@@ -134,8 +134,8 @@ export class AgentManager {
           vipSenders: userConfig.vipSenders,
           ignoreSenders: userConfig.ignoreSenders,
           labelsToProcess: ['INBOX'],
-          maxEmailsPerRun: userConfig.emailAgent.maxEmailsPerRun,
-          unreadOnly: userConfig.emailAgent.unreadOnly,
+          maxEmailsPerRun: userConfig.emailAgent.maxEmailsPerRun || 100,
+          unreadOnly: userConfig.emailAgent.unreadOnly ?? true,
           startDate: userConfig.emailAgent.startDate,
           lastProcessedAt: userConfig.emailAgent.lastProcessedAt,
           // Passa tokens do usuário
@@ -695,7 +695,8 @@ export class AgentManager {
       throw new Error('Não foi possível inicializar agentes');
     }
 
-    const agentId = `${agentType}-agent-${userId}`;
+    // O agentType já inclui "-agent" (ex: "email-agent"), então o ID é apenas agentType-userId
+    const agentId = `${agentType}-${userId}`;
     await agentSet.scheduler.runOnce(agentId, input);
   }
 

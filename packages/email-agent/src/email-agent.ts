@@ -206,9 +206,12 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
       let pageToken: string | undefined;
       const maxPerPage = 100;
       let pagesLoaded = 0;
-      const maxPages = Math.ceil(this.emailConfig.maxEmailsPerRun / maxPerPage);
       
-      console.log(`[EmailAgent] Buscando até ${this.emailConfig.maxEmailsPerRun} emails (max ${maxPages} páginas)...`);
+      // Defaults: 100 emails e 10 páginas no máximo
+      const maxEmailsPerRun = this.emailConfig.maxEmailsPerRun || 100;
+      const maxPages = Math.min(Math.ceil(maxEmailsPerRun / maxPerPage), 10);
+      
+      console.log(`[EmailAgent] Buscando até ${maxEmailsPerRun} emails (max ${maxPages} páginas)...`);
       
       // Loop de paginação - busca TODAS as páginas
       while (pagesLoaded < maxPages) {
