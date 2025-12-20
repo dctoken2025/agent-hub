@@ -675,7 +675,8 @@ export class AgentManager {
       throw new Error('Agentes não inicializados para este usuário');
     }
 
-    const agentId = `${agentType}-agent-${userId}`;
+    // O agentType já inclui "-agent" (ex: "email-agent"), então o ID é apenas agentType-userId
+    const agentId = `${agentType}-${userId}`;
     await agentSet.scheduler.stop(agentId);
   }
 

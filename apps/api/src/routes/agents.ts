@@ -129,8 +129,8 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
           },
         },
         status: emailAgentRunning ? 'running' : 'stopped',
-        runCount: emailAgentRunning?.runCount || dbRunCount,
-        lastRun: emailAgentRunning?.lastRun || dbLastRun,
+        runCount: dbRunCount, // Sempre usa o valor persistido do banco
+        lastRun: dbLastRun,
       });
     }
 
@@ -172,8 +172,8 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
           },
         },
         status: legalAgentRunning ? 'running' : 'stopped',
-        runCount: legalAgentRunning?.runCount || dbRunCount,
-        lastRun: legalAgentRunning?.lastRun || dbLastRun,
+        runCount: dbRunCount, // Sempre usa o valor persistido do banco
+        lastRun: dbLastRun,
       });
     }
 
@@ -218,8 +218,8 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
           },
         },
         status: financialAgentRunning ? 'running' : 'stopped',
-        runCount: financialAgentRunning?.runCount || dbRunCount,
-        lastRun: financialAgentRunning?.lastRun || dbLastRun,
+        runCount: dbRunCount, // Sempre usa o valor persistido do banco
+        lastRun: dbLastRun,
       });
     }
 
@@ -274,8 +274,8 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
           },
         },
         status: stablecoinAgentRunning ? 'running' : 'stopped',
-        runCount: stablecoinAgentRunning?.runCount || dbRunCount,
-        lastRun: stablecoinAgentRunning?.lastRun || dbLastRun,
+        runCount: dbRunCount, // Sempre usa o valor persistido do banco
+        lastRun: dbLastRun,
       });
     }
 
