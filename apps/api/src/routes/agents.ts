@@ -211,7 +211,7 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
           enabled: userConfig.stablecoinAgent.enabled,
           schedule: {
             type: 'interval',
-            value: userConfig.stablecoinAgent.checkInterval,
+            value: userConfig.stablecoinAgent.checkInterval || 60,
           },
         },
         status: stablecoinAgentRunning ? 'running' : 'stopped',
@@ -287,10 +287,14 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
       try {
         const userId = request.user!.id;
         const agentManager = getAgentManager();
+        const agentId = request.params.id;
 
-        await agentManager.runAgentOnce(userId, request.params.id);
+        // Executa de forma assíncrona para não bloquear a request
+        agentManager.runAgentOnce(userId, agentId).catch((err) => {
+          console.error(`[Agents] Erro ao executar ${agentId} para ${userId}:`, err);
+        });
 
-        return { success: true, message: 'Execução iniciada' };
+        return { success: true, message: 'Execução iniciada em background...' };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Erro desconhecido';
         return reply.status(400).send({ error: message });
@@ -303,9 +307,13 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
     const userId = request.user!.id;
     const agentManager = getAgentManager();
 
-    await agentManager.initializeForUser(userId);
+    // Inicia de forma assíncrona para não bloquear a request
+    // A primeira execução acontece em background
+    agentManager.initializeForUser(userId).catch((err) => {
+      console.error(`[Agents] Erro ao inicializar agentes para ${userId}:`, err);
+    });
 
-    return { success: true, message: 'Todos os agentes iniciados' };
+    return { success: true, message: 'Agentes sendo iniciados em background...' };
   });
 
   // Para todos os agentes do usuário
