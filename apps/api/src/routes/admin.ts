@@ -269,13 +269,24 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
+      // Prepara dados de atualização
+      const updateData: Record<string, unknown> = {
+        accountStatus: status,
+        isActive: status === 'active',
+        updatedAt: new Date(),
+      };
+
+      // Se ativando e usuário não tem trial definido, inicia trial de 7 dias
+      if (status === 'active' && !user.trialEndsAt) {
+        const trialEndsAt = new Date();
+        trialEndsAt.setDate(trialEndsAt.getDate() + 7);
+        updateData.trialEndsAt = trialEndsAt;
+        console.log(`[Admin] Iniciando trial de 7 dias para ${user.email} (até ${trialEndsAt.toISOString()})`);
+      }
+
       // Atualiza o status
       await db.update(users)
-        .set({ 
-          accountStatus: status,
-          isActive: status === 'active',
-          updatedAt: new Date(),
-        })
+        .set(updateData)
         .where(eq(users.id, id));
 
       // Se suspender, para os agentes do usuário

@@ -207,9 +207,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           name: googleUser.name,
           role: isFirstUser ? 'admin' : 'user',
           gmailTokens: tokens,
-          isActive: true, // Todos os usuários começam ativos
-          accountStatus: isFirstUser ? 'active' : 'active', // Todos começam ativos (trial controla o acesso)
-          trialEndsAt: isFirstUser ? null : trialEndsAt, // Admin não tem trial, demais têm 7 dias
+          isActive: isFirstUser, // Apenas admin começa ativo
+          accountStatus: isFirstUser ? 'active' : 'pending', // Novos usuários precisam de aprovação
+          trialEndsAt: null, // Trial começa quando admin aprovar
         }).returning();
 
         // Cria configurações padrão
@@ -294,9 +294,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         passwordHash,
         name: name || email.split('@')[0],
         role: isFirstUser ? 'admin' : 'user',
-        isActive: true,
-        accountStatus: 'active',
-        trialEndsAt: isFirstUser ? null : trialEndsAt, // Admin não tem trial
+        isActive: isFirstUser, // Apenas admin começa ativo
+        accountStatus: isFirstUser ? 'active' : 'pending', // Novos usuários precisam de aprovação
+        trialEndsAt: null, // Trial começa quando admin aprovar
       }).returning();
 
       await db.insert(userConfigs).values({

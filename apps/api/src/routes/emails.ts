@@ -170,6 +170,9 @@ async function saveFinancialItemsToDatabase(
 
   for (const item of items) {
     try {
+      // Garante que amount é um número válido (campo obrigatório no banco)
+      const amount = typeof item.amount === 'number' && !isNaN(item.amount) ? item.amount : 0;
+      
       // Verifica se já existe (baseado em emailId + creditor + amount + dueDate)
       const existing = await db
         .select()
@@ -178,14 +181,14 @@ async function saveFinancialItemsToDatabase(
           and(
             eq(financialItems.emailId, item.emailId),
             eq(financialItems.creditor, item.creditor),
-            eq(financialItems.amount, item.amount),
+            eq(financialItems.amount, amount),
             eq(financialItems.userId, userId)
           )
         )
         .limit(1);
 
       if (existing.length > 0) {
-        console.log(`[EmailRoutes] ⏭️ Item financeiro já existe: ${item.creditor} - R$ ${(item.amount / 100).toFixed(2)}`);
+        console.log(`[EmailRoutes] ⏭️ Item financeiro já existe: ${item.creditor} - R$ ${(amount / 100).toFixed(2)}`);
         skippedCount++;
         continue;
       }
@@ -201,7 +204,7 @@ async function saveFinancialItemsToDatabase(
         // Dados financeiros
         type: item.type,
         status: item.status,
-        amount: item.amount,
+        amount: amount,
         currency: item.currency || 'BRL',
         dueDate: item.dueDate ? new Date(item.dueDate) : null,
         issueDate: item.issueDate ? new Date(item.issueDate) : null,
