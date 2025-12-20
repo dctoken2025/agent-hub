@@ -147,6 +147,7 @@ export async function loadUserConfig(userId: string): Promise<{
       processContracts: true,
       unreadOnly: true,
       customRules: [],
+      startDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 dias atrás
     } as EmailAgentSettings,
     legalAgent: {
       enabled: true,
