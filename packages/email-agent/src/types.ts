@@ -91,6 +91,9 @@ export interface EmailAgentConfig {
   
   // Processar apenas não lidos
   unreadOnly: boolean;
+  
+  // Gmail OAuth tokens (para multi-tenant)
+  gmailTokens?: Record<string, unknown>;
 }
 
 export const EmailAgentConfigSchema = z.object({

@@ -1,6 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { eq } from 'drizzle-orm';
-import { getDb, appConfig, isDatabaseConnected } from '../db/index.js';
+import { getDb, globalConfig, userConfigs, users, isDatabaseConnected } from '../db/index.js';
+import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
+
+// ===========================================
+// Interfaces de Configuração
+// ===========================================
 
 // Regra de classificação personalizada
 export interface ClassificationRule {
@@ -8,16 +13,16 @@ export interface ClassificationRule {
   name: string;
   enabled: boolean;
   condition: {
-    field: 'subject' | 'body' | 'from' | 'all'; // onde procurar
+    field: 'subject' | 'body' | 'from' | 'all';
     operator: 'contains' | 'startsWith' | 'endsWith' | 'equals' | 'regex';
-    value: string; // termo ou padrão
+    value: string;
     caseSensitive?: boolean;
   };
   action: {
     priority: 'urgent' | 'attention' | 'informative' | 'low' | 'cc_only';
     tags?: string[];
     requiresAction?: boolean;
-    reasoning?: string; // explicação para o usuário
+    reasoning?: string;
   };
 }
 
@@ -29,11 +34,7 @@ export interface EmailAgentSettings {
   processContracts: boolean;
   unreadOnly: boolean;
   customRules: ClassificationRule[];
-  // Data base para começar a buscar emails (ISO string)
-  // Se não definida, busca todos os emails
   startDate?: string;
-  // Última data/hora que o agente processou (ISO string)
-  // Usado para buscar apenas emails novos a partir desta data
   lastProcessedAt?: string;
 }
 
@@ -46,162 +47,44 @@ export interface LegalAgentSettings {
   highRiskKeywords: string[];
 }
 
-interface AppConfigData {
-  anthropic: {
-    apiKey: string;
+// Configuração do Stablecoin Agent
+export interface StablecoinAgentSettings {
+  enabled: boolean;
+  checkInterval: number;
+  thresholds: {
+    largeMint: number;
+    largeBurn: number;
+    largeTransfer: number;
+    supplyChangePercent: number;
+    frequencyPerHour: number;
   };
-  gmail: {
-    clientId: string;
-    clientSecret: string;
-    redirectUri: string;
-    tokens?: {
-      access_token: string;
-      refresh_token?: string;
-      scope?: string;
-      token_type?: string;
-      expiry_date?: number;
-    };
-  };
-  alchemy: {
-    apiKey: string;
-  };
-  user: {
-    email: string;
-    vipSenders: string[];
-    ignoreSenders: string[];
-  };
-  notifications: {
-    slackWebhookUrl?: string;
-    telegramBotToken?: string;
-    telegramChatId?: string;
-  };
-  settings: {
-    emailCheckInterval: number;
-    stablecoinCheckInterval: number;
-  };
-  stablecoin: {
-    checkInterval: number;
-    thresholds: {
-      largeMint: number;
-      largeBurn: number;
-      largeTransfer: number;
-      supplyChangePercent: number;
-      frequencyPerHour: number;
-    };
-  };
-  // Novas configurações de agentes
-  emailAgent: EmailAgentSettings;
-  legalAgent: LegalAgentSettings;
 }
 
-// Carrega config do banco ou das env vars
-async function loadConfig(): Promise<AppConfigData> {
-  const defaults: AppConfigData = {
-    anthropic: {
-      apiKey: process.env.ANTHROPIC_API_KEY || '',
-    },
+// Configuração de Notificações
+export interface NotificationSettings {
+  slackWebhookUrl?: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+}
+
+// ===========================================
+// Helpers
+// ===========================================
+
+// Carrega configurações globais
+export async function loadGlobalConfig(): Promise<{
+  anthropic: { apiKey: string };
+  gmail: { clientId: string; clientSecret: string; redirectUri: string };
+  alchemy: { apiKey: string };
+}> {
+  const defaults = {
+    anthropic: { apiKey: process.env.ANTHROPIC_API_KEY || '' },
     gmail: {
       clientId: process.env.GMAIL_CLIENT_ID || '',
       clientSecret: process.env.GMAIL_CLIENT_SECRET || '',
       redirectUri: process.env.GMAIL_REDIRECT_URI || 'http://localhost:3001/api/auth/gmail/callback',
     },
-    alchemy: {
-      apiKey: process.env.ALCHEMY_API_KEY || '',
-    },
-    user: {
-      email: process.env.USER_EMAIL || '',
-      vipSenders: (process.env.VIP_SENDERS || '').split(',').filter(Boolean),
-      ignoreSenders: (process.env.IGNORE_SENDERS || 'newsletter,marketing,noreply').split(',').filter(Boolean),
-    },
-    notifications: {
-      slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || '',
-      telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
-      telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
-    },
-    settings: {
-      emailCheckInterval: parseInt(process.env.EMAIL_CHECK_INTERVAL || '5'),
-      stablecoinCheckInterval: parseInt(process.env.STABLECOIN_CHECK_INTERVAL || '60'),
-    },
-    stablecoin: {
-      checkInterval: 60,
-      thresholds: {
-        largeMint: 10000000,
-        largeBurn: 10000000,
-        largeTransfer: 50000000,
-        supplyChangePercent: 1,
-        frequencyPerHour: 100,
-      },
-    },
-    emailAgent: {
-      enabled: true,
-      intervalMinutes: 10,
-      maxEmailsPerRun: 50,
-      processContracts: true,
-      unreadOnly: true,
-      startDate: undefined, // Se undefined, busca desde sempre
-      lastProcessedAt: undefined, // Atualizado automaticamente após cada execução
-      customRules: [
-        // Regras padrão de exemplo
-        {
-          id: 'atraso-critico',
-          name: 'Emails sobre atraso são críticos',
-          enabled: true,
-          condition: {
-            field: 'all',
-            operator: 'contains',
-            value: 'atraso',
-            caseSensitive: false,
-          },
-          action: {
-            priority: 'urgent',
-            tags: ['atraso', 'crítico'],
-            requiresAction: true,
-            reasoning: 'Email menciona atraso - requer atenção imediata',
-          },
-        },
-        {
-          id: 'pagamento-urgente',
-          name: 'Pagamentos pendentes são urgentes',
-          enabled: true,
-          condition: {
-            field: 'all',
-            operator: 'contains',
-            value: 'pagamento pendente',
-            caseSensitive: false,
-          },
-          action: {
-            priority: 'urgent',
-            tags: ['pagamento', 'pendente'],
-            requiresAction: true,
-            reasoning: 'Pagamento pendente requer ação',
-          },
-        },
-        {
-          id: 'vencimento-atencao',
-          name: 'Vencimentos requerem atenção',
-          enabled: true,
-          condition: {
-            field: 'all',
-            operator: 'contains',
-            value: 'vencimento',
-            caseSensitive: false,
-          },
-          action: {
-            priority: 'attention',
-            tags: ['vencimento'],
-            requiresAction: true,
-            reasoning: 'Email menciona vencimento',
-          },
-        },
-      ],
-    },
-    legalAgent: {
-      enabled: true,
-      autoAnalyze: true,
-      maxDocumentSizeMB: 10,
-      contractKeywords: ['contrato', 'acordo', 'termo', 'aditivo', 'procuração', 'minuta', 'proposta'],
-      highRiskKeywords: ['penalidade', 'multa', 'rescisão', 'indenização', 'exclusividade', 'não concorrência'],
-    },
+    alchemy: { apiKey: process.env.ALCHEMY_API_KEY || '' },
   };
 
   const db = getDb();
@@ -210,7 +93,7 @@ async function loadConfig(): Promise<AppConfigData> {
   }
 
   try {
-    const configs = await db.select().from(appConfig);
+    const configs = await db.select().from(globalConfig);
     const configMap = new Map(configs.map(c => [c.key, c.value]));
 
     return {
@@ -221,199 +104,332 @@ async function loadConfig(): Promise<AppConfigData> {
         clientId: configMap.get('gmail.clientId') || defaults.gmail.clientId,
         clientSecret: configMap.get('gmail.clientSecret') || defaults.gmail.clientSecret,
         redirectUri: configMap.get('gmail.redirectUri') || defaults.gmail.redirectUri,
-        tokens: configMap.get('gmail.tokens') 
-          ? JSON.parse(configMap.get('gmail.tokens')!) 
-          : undefined,
       },
       alchemy: {
         apiKey: configMap.get('alchemy.apiKey') || defaults.alchemy.apiKey,
       },
-      user: {
-        email: configMap.get('user.email') || defaults.user.email,
-        vipSenders: configMap.get('user.vipSenders') 
-          ? JSON.parse(configMap.get('user.vipSenders')!) 
-          : defaults.user.vipSenders,
-        ignoreSenders: configMap.get('user.ignoreSenders') 
-          ? JSON.parse(configMap.get('user.ignoreSenders')!) 
-          : defaults.user.ignoreSenders,
-      },
-      notifications: {
-        slackWebhookUrl: configMap.get('notifications.slackWebhookUrl') || defaults.notifications.slackWebhookUrl,
-        telegramBotToken: configMap.get('notifications.telegramBotToken') || defaults.notifications.telegramBotToken,
-        telegramChatId: configMap.get('notifications.telegramChatId') || defaults.notifications.telegramChatId,
-      },
-      settings: {
-        emailCheckInterval: configMap.get('settings.emailCheckInterval') 
-          ? parseInt(configMap.get('settings.emailCheckInterval')!) 
-          : defaults.settings.emailCheckInterval,
-        stablecoinCheckInterval: configMap.get('settings.stablecoinCheckInterval') 
-          ? parseInt(configMap.get('settings.stablecoinCheckInterval')!) 
-          : defaults.settings.stablecoinCheckInterval,
-      },
-      stablecoin: configMap.get('stablecoin') 
-        ? JSON.parse(configMap.get('stablecoin')!) 
-        : defaults.stablecoin,
-      emailAgent: configMap.get('emailAgent') 
-        ? JSON.parse(configMap.get('emailAgent')!) 
-        : defaults.emailAgent,
-      legalAgent: configMap.get('legalAgent') 
-        ? JSON.parse(configMap.get('legalAgent')!) 
-        : defaults.legalAgent,
     };
   } catch (error) {
-    console.error('[Config] Erro ao carregar do banco:', error);
+    console.error('[Config] Erro ao carregar config global:', error);
     return defaults;
   }
 }
 
-// Salva uma config no banco
-export async function saveConfigValue(key: string, value: string, isSecret = false): Promise<void> {
+// Carrega configurações de um usuário específico
+export async function loadUserConfig(userId: string): Promise<{
+  vipSenders: string[];
+  ignoreSenders: string[];
+  emailAgent: EmailAgentSettings;
+  legalAgent: LegalAgentSettings;
+  stablecoinAgent: StablecoinAgentSettings;
+  notifications: NotificationSettings;
+}> {
+  const defaults = {
+    vipSenders: [],
+    ignoreSenders: ['newsletter', 'marketing', 'noreply'],
+    emailAgent: {
+      enabled: true,
+      intervalMinutes: 10,
+      maxEmailsPerRun: 50,
+      processContracts: true,
+      unreadOnly: true,
+      customRules: [],
+    } as EmailAgentSettings,
+    legalAgent: {
+      enabled: true,
+      autoAnalyze: true,
+      maxDocumentSizeMB: 10,
+      contractKeywords: ['contrato', 'acordo', 'termo', 'aditivo', 'procuração', 'minuta', 'proposta'],
+      highRiskKeywords: ['penalidade', 'multa', 'rescisão', 'indenização', 'exclusividade'],
+    } as LegalAgentSettings,
+    stablecoinAgent: {
+      enabled: false,
+      checkInterval: 60,
+      thresholds: {
+        largeMint: 10000000,
+        largeBurn: 10000000,
+        largeTransfer: 50000000,
+        supplyChangePercent: 1,
+        frequencyPerHour: 100,
+      },
+    } as StablecoinAgentSettings,
+    notifications: {} as NotificationSettings,
+  };
+
+  const db = getDb();
+  if (!db) return defaults;
+
+  try {
+    const [config] = await db.select()
+      .from(userConfigs)
+      .where(eq(userConfigs.userId, userId))
+      .limit(1);
+
+    if (!config) return defaults;
+
+    return {
+      vipSenders: config.vipSenders || defaults.vipSenders,
+      ignoreSenders: config.ignoreSenders || defaults.ignoreSenders,
+      emailAgent: (config.emailAgentConfig as EmailAgentSettings) || defaults.emailAgent,
+      legalAgent: (config.legalAgentConfig as LegalAgentSettings) || defaults.legalAgent,
+      stablecoinAgent: (config.stablecoinAgentConfig as StablecoinAgentSettings) || defaults.stablecoinAgent,
+      notifications: (config.notificationConfig as NotificationSettings) || defaults.notifications,
+    };
+  } catch (error) {
+    console.error('[Config] Erro ao carregar config do usuário:', error);
+    return defaults;
+  }
+}
+
+// Salva uma config global (só admin)
+export async function saveGlobalConfigValue(key: string, value: string, isSecret = false): Promise<void> {
   const db = getDb();
   if (!db) {
-    console.warn('[Config] Banco não disponível, salvando apenas em env');
+    console.warn('[Config] Banco não disponível');
     return;
   }
 
   try {
-    // Upsert
-    const existing = await db.select().from(appConfig).where(eq(appConfig.key, key));
-    
-    if (existing.length > 0) {
-      await db.update(appConfig)
-        .set({ value, isSecret, updatedAt: new Date() })
-        .where(eq(appConfig.key, key));
-    } else {
-      await db.insert(appConfig).values({ key, value, isSecret });
-    }
+    const existing = await db.select().from(globalConfig).where(eq(globalConfig.key, key));
 
-    // Também atualiza env var em runtime para uso imediato
-    const envKey = key.replace('.', '_').toUpperCase();
-    process.env[envKey] = value;
+    if (existing.length > 0) {
+      await db.update(globalConfig)
+        .set({ value, isSecret, updatedAt: new Date() })
+        .where(eq(globalConfig.key, key));
+    } else {
+      await db.insert(globalConfig).values({ key, value, isSecret });
+    }
   } catch (error) {
-    console.error('[Config] Erro ao salvar:', error);
+    console.error('[Config] Erro ao salvar config global:', error);
     throw error;
   }
 }
 
-// Mascara valores sensíveis
-function maskSensitiveData(config: AppConfigData): AppConfigData {
+// Salva config de usuário
+export async function saveUserConfigValue(
+  userId: string,
+  updates: Partial<{
+    vipSenders: string[];
+    ignoreSenders: string[];
+    emailAgentConfig: EmailAgentSettings;
+    legalAgentConfig: LegalAgentSettings;
+    stablecoinAgentConfig: StablecoinAgentSettings;
+    notificationConfig: NotificationSettings;
+  }>
+): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+
+  try {
+    const existing = await db.select()
+      .from(userConfigs)
+      .where(eq(userConfigs.userId, userId))
+      .limit(1);
+
+    if (existing.length > 0) {
+      await db.update(userConfigs)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(userConfigs.userId, userId));
+    } else {
+      await db.insert(userConfigs).values({
+        userId,
+        ...updates,
+      });
+    }
+  } catch (error) {
+    console.error('[Config] Erro ao salvar config do usuário:', error);
+    throw error;
+  }
+}
+
+// ===========================================
+// Função loadConfig para compatibilidade
+// ===========================================
+export async function loadConfig(userId?: string) {
+  const global = await loadGlobalConfig();
+  
+  // Se não tem userId, retorna formato antigo para compatibilidade
+  if (!userId) {
+    return {
+      anthropic: global.anthropic,
+      gmail: {
+        ...global.gmail,
+        tokens: undefined, // Tokens agora são por usuário
+      },
+      alchemy: global.alchemy,
+      user: {
+        email: '',
+        vipSenders: [],
+        ignoreSenders: [],
+      },
+      notifications: {},
+      settings: {
+        emailCheckInterval: 10,
+        stablecoinCheckInterval: 60,
+      },
+      stablecoin: {
+        checkInterval: 60,
+        thresholds: {
+          largeMint: 10000000,
+          largeBurn: 10000000,
+          largeTransfer: 50000000,
+          supplyChangePercent: 1,
+          frequencyPerHour: 100,
+        },
+      },
+      emailAgent: {
+        enabled: true,
+        intervalMinutes: 10,
+        maxEmailsPerRun: 50,
+        processContracts: true,
+        unreadOnly: true,
+        customRules: [],
+      },
+      legalAgent: {
+        enabled: true,
+        autoAnalyze: true,
+        maxDocumentSizeMB: 10,
+        contractKeywords: [],
+        highRiskKeywords: [],
+      },
+    };
+  }
+
+  const userConfig = await loadUserConfig(userId);
+  
+  // Busca user para pegar email e tokens
+  const db = getDb();
+  let userEmail = '';
+  let gmailTokens = undefined;
+  
+  if (db) {
+    const [user] = await db.select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    
+    if (user) {
+      userEmail = user.email;
+      gmailTokens = user.gmailTokens as Record<string, unknown> | undefined;
+    }
+  }
+
   return {
-    ...config,
-    anthropic: {
-      apiKey: config.anthropic.apiKey ? '***' + config.anthropic.apiKey.slice(-8) : '',
-    },
+    anthropic: global.anthropic,
     gmail: {
-      ...config.gmail,
-      clientSecret: config.gmail.clientSecret ? '***' + config.gmail.clientSecret.slice(-4) : '',
+      ...global.gmail,
+      tokens: gmailTokens,
     },
-    alchemy: {
-      apiKey: config.alchemy.apiKey ? '***' + config.alchemy.apiKey.slice(-8) : '',
+    alchemy: global.alchemy,
+    user: {
+      email: userEmail,
+      vipSenders: userConfig.vipSenders,
+      ignoreSenders: userConfig.ignoreSenders,
     },
-    notifications: {
-      ...config.notifications,
-      slackWebhookUrl: config.notifications.slackWebhookUrl ? '***configurado***' : '',
-      telegramBotToken: config.notifications.telegramBotToken ? '***configurado***' : '',
+    notifications: userConfig.notifications,
+    settings: {
+      emailCheckInterval: userConfig.emailAgent.intervalMinutes,
+      stablecoinCheckInterval: userConfig.stablecoinAgent.checkInterval,
     },
+    stablecoin: {
+      checkInterval: userConfig.stablecoinAgent.checkInterval,
+      thresholds: userConfig.stablecoinAgent.thresholds,
+    },
+    emailAgent: userConfig.emailAgent,
+    legalAgent: userConfig.legalAgent,
   };
 }
 
+// ===========================================
+// Rotas de Configuração
+// ===========================================
 export const configRoutes: FastifyPluginAsync = async (app) => {
-  // Obtém configuração atual (mascarada)
-  app.get('/', async () => {
-    const config = await loadConfig();
+  // ===========================================
+  // ROTAS GLOBAIS (SÓ ADMIN)
+  // ===========================================
+
+  // Obtém configurações globais (admin)
+  app.get('/global', { preHandler: [authMiddleware, adminMiddleware] }, async () => {
+    const config = await loadGlobalConfig();
     return {
-      config: maskSensitiveData(config),
+      config: {
+        anthropic: {
+          apiKey: config.anthropic.apiKey ? '***' + config.anthropic.apiKey.slice(-8) : '',
+        },
+        gmail: {
+          clientId: config.gmail.clientId || '',
+          clientSecret: config.gmail.clientSecret ? '***' + config.gmail.clientSecret.slice(-4) : '',
+          redirectUri: config.gmail.redirectUri,
+        },
+        alchemy: {
+          apiKey: config.alchemy.apiKey ? '***' + config.alchemy.apiKey.slice(-8) : '',
+        },
+      },
       isConfigured: {
         anthropic: !!config.anthropic.apiKey,
-        gmail: !!config.gmail.clientId && !!config.gmail.clientSecret,
+        gmail: !!(config.gmail.clientId && config.gmail.clientSecret),
         alchemy: !!config.alchemy.apiKey,
-        userEmail: !!config.user.email,
-        slack: !!config.notifications.slackWebhookUrl,
-        telegram: !!config.notifications.telegramBotToken,
       },
-      databaseConnected: isDatabaseConnected(),
     };
   });
 
-  // Salva configuração do Anthropic
-  app.post<{ Body: { apiKey?: string } }>('/anthropic', async (request) => {
-    const apiKey = request.body?.apiKey;
-    if (!apiKey) {
-      return { success: false, error: 'API Key é obrigatória' };
-    }
-    
-    await saveConfigValue('anthropic.apiKey', apiKey, true);
-    process.env.ANTHROPIC_API_KEY = apiKey;
-    return { success: true, message: 'API Key do Anthropic salva com sucesso' };
-  });
+  // Salva configuração do Anthropic (admin)
+  app.post<{ Body: { apiKey?: string } }>(
+    '/global/anthropic',
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request) => {
+      const apiKey = request.body?.apiKey;
+      if (!apiKey) {
+        return { success: false, error: 'API Key é obrigatória' };
+      }
 
-  // Salva configuração do Gmail
+      await saveGlobalConfigValue('anthropic.apiKey', apiKey, true);
+      process.env.ANTHROPIC_API_KEY = apiKey;
+      return { success: true, message: 'API Key do Anthropic salva com sucesso' };
+    }
+  );
+
+  // Salva configuração do Gmail (admin)
   app.post<{ Body: { clientId?: string; clientSecret?: string; redirectUri?: string } }>(
-    '/gmail',
+    '/global/gmail',
+    { preHandler: [authMiddleware, adminMiddleware] },
     async (request) => {
       const { clientId, clientSecret, redirectUri } = request.body || {};
-      
+
       if (clientId) {
-        await saveConfigValue('gmail.clientId', clientId);
-        process.env.GMAIL_CLIENT_ID = clientId;
+        await saveGlobalConfigValue('gmail.clientId', clientId);
       }
       if (clientSecret) {
-        await saveConfigValue('gmail.clientSecret', clientSecret, true);
-        process.env.GMAIL_CLIENT_SECRET = clientSecret;
+        await saveGlobalConfigValue('gmail.clientSecret', clientSecret, true);
       }
       if (redirectUri) {
-        await saveConfigValue('gmail.redirectUri', redirectUri);
+        await saveGlobalConfigValue('gmail.redirectUri', redirectUri);
       }
-      
+
       return { success: true, message: 'Configuração do Gmail salva com sucesso' };
     }
   );
 
-  // Salva configuração do usuário
-  app.post<{ Body: { email?: string; vipSenders?: string[]; ignoreSenders?: string[] } }>(
-    '/user',
+  // Salva configuração do Alchemy (admin)
+  app.post<{ Body: { apiKey?: string } }>(
+    '/global/alchemy',
+    { preHandler: [authMiddleware, adminMiddleware] },
     async (request) => {
-      const { email, vipSenders, ignoreSenders } = request.body || {};
-      
-      if (email) {
-        await saveConfigValue('user.email', email);
-        process.env.USER_EMAIL = email;
+      const apiKey = request.body?.apiKey;
+      if (!apiKey) {
+        return { success: false, error: 'API Key é obrigatória' };
       }
-      if (vipSenders) {
-        await saveConfigValue('user.vipSenders', JSON.stringify(vipSenders));
-      }
-      if (ignoreSenders) {
-        await saveConfigValue('user.ignoreSenders', JSON.stringify(ignoreSenders));
-      }
-      
-      return { success: true, message: 'Configuração do usuário salva com sucesso' };
+
+      await saveGlobalConfigValue('alchemy.apiKey', apiKey, true);
+      process.env.ALCHEMY_API_KEY = apiKey;
+      return { success: true, message: 'API Key da Alchemy salva com sucesso' };
     }
   );
 
-  // Salva configuração de notificações
-  app.post<{ Body: { slackWebhookUrl?: string; telegramBotToken?: string; telegramChatId?: string } }>(
-    '/notifications',
-    async (request) => {
-      const { slackWebhookUrl, telegramBotToken, telegramChatId } = request.body || {};
-      
-      if (slackWebhookUrl !== undefined) {
-        await saveConfigValue('notifications.slackWebhookUrl', slackWebhookUrl, true);
-      }
-      if (telegramBotToken !== undefined) {
-        await saveConfigValue('notifications.telegramBotToken', telegramBotToken, true);
-      }
-      if (telegramChatId !== undefined) {
-        await saveConfigValue('notifications.telegramChatId', telegramChatId);
-      }
-      
-      return { success: true, message: 'Configuração de notificações salva com sucesso' };
-    }
-  );
+  // Testa conexão com Anthropic (admin)
+  app.post('/global/test/anthropic', { preHandler: [authMiddleware, adminMiddleware] }, async () => {
+    const config = await loadGlobalConfig();
 
-  // Testa conexão com Anthropic
-  app.post('/test/anthropic', async () => {
-    const config = await loadConfig();
-    
     if (!config.anthropic.apiKey) {
       return { success: false, error: 'API Key não configurada' };
     }
@@ -444,67 +460,15 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  // Testa conexão com banco de dados
-  app.post('/test/database', async () => {
-    const db = getDb();
-    if (!db) {
-      return { success: false, error: 'DATABASE_URL não configurada' };
-    }
+  // Testa conexão com Alchemy (admin)
+  app.post('/global/test/alchemy', { preHandler: [authMiddleware, adminMiddleware] }, async () => {
+    const config = await loadGlobalConfig();
 
-    try {
-      await db.execute('SELECT 1');
-      return { success: true, message: 'Conexão com PostgreSQL OK!' };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Erro de conexão' };
-    }
-  });
-
-  // ===========================================
-  // Configurações Alchemy (Stablecoin Agent)
-  // ===========================================
-
-  // Salva configuração da Alchemy
-  app.post<{ Body: { apiKey?: string } }>('/alchemy', async (request) => {
-    const apiKey = request.body?.apiKey;
-    if (!apiKey) {
-      return { success: false, error: 'API Key é obrigatória' };
-    }
-    
-    await saveConfigValue('alchemy.apiKey', apiKey, true);
-    process.env.ALCHEMY_API_KEY = apiKey;
-    return { success: true, message: 'API Key da Alchemy salva com sucesso' };
-  });
-
-  // Salva configuração do Stablecoin Agent
-  app.post<{ Body: { checkInterval?: number; thresholds?: { largeMint?: number; largeBurn?: number; largeTransfer?: number; supplyChangePercent?: number } } }>(
-    '/stablecoin',
-    async (request) => {
-      const { checkInterval, thresholds } = request.body || {};
-      
-      if (checkInterval !== undefined) {
-        await saveConfigValue('settings.stablecoinCheckInterval', String(checkInterval));
-      }
-      
-      if (thresholds) {
-        const config = await loadConfig();
-        const newThresholds = { ...config.stablecoin.thresholds, ...thresholds };
-        await saveConfigValue('stablecoin.thresholds', JSON.stringify(newThresholds));
-      }
-      
-      return { success: true, message: 'Configuração do Stablecoin Agent salva com sucesso' };
-    }
-  );
-
-  // Testa conexão com Alchemy
-  app.post('/test/alchemy', async () => {
-    const config = await loadConfig();
-    
     if (!config.alchemy.apiKey) {
       return { success: false, error: 'API Key não configurada' };
     }
 
     try {
-      // Testa chamando o endpoint de bloco atual
       const response = await fetch(
         `https://eth-mainnet.g.alchemy.com/v2/${config.alchemy.apiKey}`,
         {
@@ -528,7 +492,7 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
           return { success: false, error: data.error.message || 'Erro na API' };
         }
       }
-      
+
       return { success: false, error: 'Erro ao conectar com Alchemy' };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Erro de conexão' };
@@ -536,240 +500,338 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ===========================================
-  // Configurações de Agentes
+  // ROTAS DO USUÁRIO
+  // ===========================================
+
+  // Obtém configurações do usuário atual
+  app.get('/', { preHandler: [authMiddleware] }, async (request) => {
+    const userId = request.user!.id;
+    const userConfig = await loadUserConfig(userId);
+    const globalCfg = await loadGlobalConfig();
+
+    // Busca se usuário tem Gmail conectado
+    const db = getDb();
+    let hasGmailConnected = false;
+    
+    if (db) {
+      const [user] = await db.select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      hasGmailConnected = !!user?.gmailTokens;
+    }
+
+    return {
+      config: {
+        vipSenders: userConfig.vipSenders,
+        ignoreSenders: userConfig.ignoreSenders,
+        emailAgent: userConfig.emailAgent,
+        legalAgent: userConfig.legalAgent,
+        stablecoinAgent: userConfig.stablecoinAgent,
+        notifications: userConfig.notifications,
+      },
+      status: {
+        hasGmailConnected,
+        gmailConfiguredByAdmin: !!(globalCfg.gmail.clientId && globalCfg.gmail.clientSecret),
+        anthropicConfigured: !!globalCfg.anthropic.apiKey,
+        alchemyConfigured: !!globalCfg.alchemy.apiKey,
+      },
+      databaseConnected: isDatabaseConnected(),
+    };
+  });
+
+  // Salva preferências de email do usuário
+  app.post<{ Body: { vipSenders?: string[]; ignoreSenders?: string[] } }>(
+    '/user/preferences',
+    { preHandler: [authMiddleware] },
+    async (request) => {
+      const userId = request.user!.id;
+      const { vipSenders, ignoreSenders } = request.body || {};
+
+      const updates: { vipSenders?: string[]; ignoreSenders?: string[] } = {};
+
+      if (vipSenders) {
+        updates.vipSenders = vipSenders;
+      }
+      if (ignoreSenders) {
+        updates.ignoreSenders = ignoreSenders;
+      }
+
+      await saveUserConfigValue(userId, updates);
+
+      return { success: true, message: 'Preferências salvas com sucesso' };
+    }
+  );
+
+  // Salva configuração de notificações do usuário
+  app.post<{ Body: { slackWebhookUrl?: string; telegramBotToken?: string; telegramChatId?: string } }>(
+    '/user/notifications',
+    { preHandler: [authMiddleware] },
+    async (request) => {
+      const userId = request.user!.id;
+      const currentConfig = await loadUserConfig(userId);
+
+      const notificationConfig: NotificationSettings = {
+        ...currentConfig.notifications,
+        ...request.body,
+      };
+
+      await saveUserConfigValue(userId, { notificationConfig });
+
+      return { success: true, message: 'Configuração de notificações salva' };
+    }
+  );
+
+  // ===========================================
+  // CONFIGURAÇÕES DOS AGENTES (por usuário)
   // ===========================================
 
   // Obtém configurações de todos os agentes
-  app.get('/agents', async () => {
-    const config = await loadConfig();
+  app.get('/agents', { preHandler: [authMiddleware] }, async (request) => {
+    const userId = request.user!.id;
+    const config = await loadUserConfig(userId);
+
     return {
       emailAgent: config.emailAgent,
       legalAgent: config.legalAgent,
-      stablecoinAgent: {
-        enabled: true,
-        checkInterval: config.stablecoin.checkInterval,
-        thresholds: config.stablecoin.thresholds,
-      },
+      stablecoinAgent: config.stablecoinAgent,
     };
   });
 
   // Atualiza configuração do Email Agent
-  app.put<{ Body: Partial<EmailAgentSettings> }>('/agents/email', async (request, reply) => {
-    try {
-      const config = await loadConfig();
-      const updated: EmailAgentSettings = {
-        ...config.emailAgent,
-        ...request.body,
-      };
-      
-      await saveConfigValue('emailAgent', JSON.stringify(updated));
-      
-      console.log('[Config] Email Agent atualizado:', {
-        interval: updated.intervalMinutes,
-        rules: updated.customRules?.length || 0,
-      });
-
-      // Reinicia o agente para aplicar as novas configurações
-      let agentRestarted = false;
-      try {
-        const { getScheduler } = await import('@agent-hub/core');
-        const scheduler = getScheduler();
-        
-        agentRestarted = await scheduler.updateAgentInterval('email-agent', updated.intervalMinutes);
-      } catch (restartError) {
-        console.error('[Config] ⚠️ Erro ao reiniciar Email Agent:', restartError);
-      }
-      
-      return { 
-        success: true, 
-        message: agentRestarted 
-          ? 'Configuração salva e agente reiniciado' 
-          : 'Configuração salva (reinicie a API para aplicar)',
-        config: updated,
-        agentRestarted,
-      };
-    } catch (error) {
-      console.error('[Config] Erro ao salvar Email Agent:', error);
-      return reply.status(500).send({ 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Erro ao salvar' 
-      });
-    }
-  });
-
-  // Atualiza configuração do Stablecoin Agent
-  app.put<{ Body: { enabled?: boolean; checkInterval?: number; thresholds?: Record<string, number> } }>(
-    '/agents/stablecoin', 
+  app.put<{ Body: Partial<EmailAgentSettings> }>(
+    '/agents/email',
+    { preHandler: [authMiddleware] },
     async (request, reply) => {
       try {
-        const config = await loadConfig();
-        const updated = {
-          checkInterval: request.body.checkInterval ?? config.stablecoin.checkInterval,
-          thresholds: {
-            ...config.stablecoin.thresholds,
-            ...(request.body.thresholds || {}),
-          },
+        const userId = request.user!.id;
+        const currentConfig = await loadUserConfig(userId);
+        
+        const updated: EmailAgentSettings = {
+          ...currentConfig.emailAgent,
+          ...request.body,
         };
-        
-        await saveConfigValue('stablecoin', JSON.stringify(updated));
-        
-        console.log('[Config] Stablecoin Agent atualizado:', {
-          interval: updated.checkInterval,
-          thresholds: updated.thresholds,
+
+        await saveUserConfigValue(userId, { emailAgentConfig: updated });
+
+        console.log(`[Config] Email Agent atualizado para usuário ${userId}:`, {
+          interval: updated.intervalMinutes,
+          rules: updated.customRules?.length || 0,
         });
 
-        // Reinicia o agente para aplicar as novas configurações
-        let agentRestarted = false;
-        try {
-          const { getScheduler } = await import('@agent-hub/core');
-          const scheduler = getScheduler();
-          
-          agentRestarted = await scheduler.updateAgentInterval('stablecoin-agent', updated.checkInterval);
-        } catch (restartError) {
-          console.error('[Config] ⚠️ Erro ao reiniciar Stablecoin Agent:', restartError);
-        }
-        
-        return { 
-          success: true, 
-          message: agentRestarted 
-            ? 'Configuração salva e agente reiniciado' 
-            : 'Configuração salva (reinície a API para aplicar)',
-          config: { enabled: request.body.enabled ?? true, ...updated },
-          agentRestarted,
+        return {
+          success: true,
+          message: 'Configuração salva',
+          config: updated,
         };
       } catch (error) {
-        console.error('[Config] Erro ao salvar Stablecoin Agent:', error);
-        return reply.status(500).send({ 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Erro ao salvar' 
+        console.error('[Config] Erro ao salvar Email Agent:', error);
+        return reply.status(500).send({
+          success: false,
+          error: error instanceof Error ? error.message : 'Erro ao salvar',
         });
       }
     }
   );
 
   // Atualiza configuração do Legal Agent
-  app.put<{ Body: Partial<LegalAgentSettings> }>('/agents/legal', async (request, reply) => {
-    try {
-      const config = await loadConfig();
-      const updated: LegalAgentSettings = {
-        ...config.legalAgent,
-        ...request.body,
-      };
-      
-      await saveConfigValue('legalAgent', JSON.stringify(updated));
-      
-      console.log('[Config] Legal Agent atualizado:', {
-        autoAnalyze: updated.autoAnalyze,
-        keywords: updated.contractKeywords?.length || 0,
-      });
-      
-      return { 
-        success: true, 
-        message: 'Configuração do Legal Agent salva',
-        config: updated,
-      };
-    } catch (error) {
-      console.error('[Config] Erro ao salvar Legal Agent:', error);
-      return reply.status(500).send({ 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Erro ao salvar' 
-      });
-    }
-  });
+  app.put<{ Body: Partial<LegalAgentSettings> }>(
+    '/agents/legal',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      try {
+        const userId = request.user!.id;
+        const currentConfig = await loadUserConfig(userId);
 
-  // Adiciona uma regra de classificação ao Email Agent
-  app.post<{ Body: ClassificationRule }>('/agents/email/rules', async (request, reply) => {
-    try {
-      const config = await loadConfig();
-      const newRule = {
-        ...request.body,
-        id: request.body.id || `rule-${Date.now()}`,
-      };
-      
-      const updated: EmailAgentSettings = {
-        ...config.emailAgent,
-        customRules: [...(config.emailAgent.customRules || []), newRule],
-      };
-      
-      await saveConfigValue('emailAgent', JSON.stringify(updated));
-      
-      return { 
-        success: true, 
-        message: 'Regra adicionada com sucesso',
-        rule: newRule,
-      };
-    } catch (error) {
-      console.error('[Config] Erro ao adicionar regra:', error);
-      return reply.status(500).send({ 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Erro ao adicionar regra' 
-      });
+        const updated: LegalAgentSettings = {
+          ...currentConfig.legalAgent,
+          ...request.body,
+        };
+
+        await saveUserConfigValue(userId, { legalAgentConfig: updated });
+
+        return {
+          success: true,
+          message: 'Configuração do Legal Agent salva',
+          config: updated,
+        };
+      } catch (error) {
+        console.error('[Config] Erro ao salvar Legal Agent:', error);
+        return reply.status(500).send({
+          success: false,
+          error: error instanceof Error ? error.message : 'Erro ao salvar',
+        });
+      }
     }
-  });
+  );
+
+  // Atualiza configuração do Stablecoin Agent
+  app.put<{ Body: Partial<StablecoinAgentSettings> }>(
+    '/agents/stablecoin',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      try {
+        const userId = request.user!.id;
+        const currentConfig = await loadUserConfig(userId);
+
+        const updated: StablecoinAgentSettings = {
+          ...currentConfig.stablecoinAgent,
+          ...request.body,
+        };
+
+        await saveUserConfigValue(userId, { stablecoinAgentConfig: updated });
+
+        return {
+          success: true,
+          message: 'Configuração do Stablecoin Agent salva',
+          config: updated,
+        };
+      } catch (error) {
+        console.error('[Config] Erro ao salvar Stablecoin Agent:', error);
+        return reply.status(500).send({
+          success: false,
+          error: error instanceof Error ? error.message : 'Erro ao salvar',
+        });
+      }
+    }
+  );
+
+  // ===========================================
+  // REGRAS DE CLASSIFICAÇÃO (por usuário)
+  // ===========================================
+
+  // Adiciona uma regra de classificação
+  app.post<{ Body: ClassificationRule }>(
+    '/agents/email/rules',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      try {
+        const userId = request.user!.id;
+        const currentConfig = await loadUserConfig(userId);
+
+        const newRule = {
+          ...request.body,
+          id: request.body.id || `rule-${Date.now()}`,
+        };
+
+        const updated: EmailAgentSettings = {
+          ...currentConfig.emailAgent,
+          customRules: [...(currentConfig.emailAgent.customRules || []), newRule],
+        };
+
+        await saveUserConfigValue(userId, { emailAgentConfig: updated });
+
+        return {
+          success: true,
+          message: 'Regra adicionada com sucesso',
+          rule: newRule,
+        };
+      } catch (error) {
+        console.error('[Config] Erro ao adicionar regra:', error);
+        return reply.status(500).send({
+          success: false,
+          error: error instanceof Error ? error.message : 'Erro ao adicionar regra',
+        });
+      }
+    }
+  );
 
   // Remove uma regra de classificação
-  app.delete<{ Params: { ruleId: string } }>('/agents/email/rules/:ruleId', async (request, reply) => {
-    try {
-      const config = await loadConfig();
-      const updated: EmailAgentSettings = {
-        ...config.emailAgent,
-        customRules: (config.emailAgent.customRules || []).filter(r => r.id !== request.params.ruleId),
-      };
-      
-      await saveConfigValue('emailAgent', JSON.stringify(updated));
-      
-      return { 
-        success: true, 
-        message: 'Regra removida com sucesso',
-      };
-    } catch (error) {
-      console.error('[Config] Erro ao remover regra:', error);
-      return reply.status(500).send({ 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Erro ao remover regra' 
-      });
+  app.delete<{ Params: { ruleId: string } }>(
+    '/agents/email/rules/:ruleId',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      try {
+        const userId = request.user!.id;
+        const currentConfig = await loadUserConfig(userId);
+
+        const updated: EmailAgentSettings = {
+          ...currentConfig.emailAgent,
+          customRules: (currentConfig.emailAgent.customRules || []).filter(
+            (r) => r.id !== request.params.ruleId
+          ),
+        };
+
+        await saveUserConfigValue(userId, { emailAgentConfig: updated });
+
+        return {
+          success: true,
+          message: 'Regra removida com sucesso',
+        };
+      } catch (error) {
+        console.error('[Config] Erro ao remover regra:', error);
+        return reply.status(500).send({
+          success: false,
+          error: error instanceof Error ? error.message : 'Erro ao remover regra',
+        });
+      }
     }
-  });
+  );
 
   // Atualiza uma regra específica
   app.put<{ Params: { ruleId: string }; Body: Partial<ClassificationRule> }>(
-    '/agents/email/rules/:ruleId', 
+    '/agents/email/rules/:ruleId',
+    { preHandler: [authMiddleware] },
     async (request, reply) => {
       try {
-        const config = await loadConfig();
-        const ruleIndex = (config.emailAgent.customRules || []).findIndex(r => r.id === request.params.ruleId);
-        
+        const userId = request.user!.id;
+        const currentConfig = await loadUserConfig(userId);
+
+        const ruleIndex = (currentConfig.emailAgent.customRules || []).findIndex(
+          (r) => r.id === request.params.ruleId
+        );
+
         if (ruleIndex === -1) {
           return reply.status(404).send({ success: false, error: 'Regra não encontrada' });
         }
-        
-        const updatedRules = [...(config.emailAgent.customRules || [])];
+
+        const updatedRules = [...(currentConfig.emailAgent.customRules || [])];
         updatedRules[ruleIndex] = {
           ...updatedRules[ruleIndex],
           ...request.body,
         };
-        
+
         const updated: EmailAgentSettings = {
-          ...config.emailAgent,
+          ...currentConfig.emailAgent,
           customRules: updatedRules,
         };
-        
-        await saveConfigValue('emailAgent', JSON.stringify(updated));
-        
-        return { 
-          success: true, 
+
+        await saveUserConfigValue(userId, { emailAgentConfig: updated });
+
+        return {
+          success: true,
           message: 'Regra atualizada com sucesso',
           rule: updatedRules[ruleIndex],
         };
       } catch (error) {
         console.error('[Config] Erro ao atualizar regra:', error);
-        return reply.status(500).send({ 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Erro ao atualizar regra' 
+        return reply.status(500).send({
+          success: false,
+          error: error instanceof Error ? error.message : 'Erro ao atualizar regra',
         });
       }
     }
   );
+
+  // ===========================================
+  // ROTAS DE COMPATIBILIDADE (legado)
+  // Serão removidas após migração do frontend
+  // ===========================================
+
+  // Testa conexão com banco de dados
+  app.post('/test/database', async () => {
+    const db = getDb();
+    if (!db) {
+      return { success: false, error: 'DATABASE_URL não configurada' };
+    }
+
+    try {
+      await db.execute('SELECT 1');
+      return { success: true, message: 'Conexão com PostgreSQL OK!' };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Erro de conexão' };
+    }
+  });
 };
 
-export { loadConfig };
+export { saveConfigValue } from './config-legacy.js';

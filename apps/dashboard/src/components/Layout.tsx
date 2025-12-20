@@ -9,10 +9,14 @@ import {
   Activity,
   Scale,
   Coins,
-  Sliders
+  Sliders,
+  LogOut,
+  User,
+  Shield
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -28,6 +32,7 @@ const navigation = [
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, logout, isAdmin } = useAuth();
 
   return (
     <div className="min-h-screen bg-background">
@@ -76,11 +81,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="absolute bottom-4 left-4 right-4">
-          <div className="p-4 bg-secondary rounded-lg">
-            <p className="text-sm font-medium">Agent Hub</p>
-            <p className="text-xs text-muted-foreground">v1.0.0</p>
+        {/* User info */}
+        <div className="absolute bottom-4 left-4 right-4 space-y-3">
+          {/* User card */}
+          <div className="p-3 bg-secondary rounded-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                <User className="w-4 h-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user?.name || user?.email}</p>
+                <div className="flex items-center gap-1">
+                  {isAdmin && <Shield className="w-3 h-3 text-primary" />}
+                  <p className="text-xs text-muted-foreground">
+                    {isAdmin ? 'Administrador' : 'Usuário'}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
+
+          {/* Logout button */}
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
+          >
+            <LogOut className="h-5 w-5" />
+            Sair
+          </button>
         </div>
       </aside>
 
@@ -88,16 +116,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <div className="lg:pl-64">
         {/* Top bar */}
         <header className="sticky top-0 z-30 h-16 bg-card/80 backdrop-blur border-b">
-          <div className="flex items-center h-full px-4 gap-4">
-            <button 
-              className="lg:hidden"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <Menu className="h-6 w-6" />
-            </button>
-            <h1 className="text-lg font-semibold">
-              {navigation.find(n => n.href === location)?.name || 'Agent Hub'}
-            </h1>
+          <div className="flex items-center justify-between h-full px-4">
+            <div className="flex items-center gap-4">
+              <button 
+                className="lg:hidden"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <Menu className="h-6 w-6" />
+              </button>
+              <h1 className="text-lg font-semibold">
+                {navigation.find(n => n.href === location)?.name || 'Agent Hub'}
+              </h1>
+            </div>
+
+            {/* User info mobile */}
+            <div className="flex items-center gap-2 lg:hidden">
+              <span className="text-sm text-muted-foreground">{user?.email}</span>
+            </div>
           </div>
         </header>
 

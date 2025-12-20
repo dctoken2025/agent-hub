@@ -25,10 +25,13 @@ FROM nginx:alpine AS runner
 # Copy built files
 COPY --from=builder /app/apps/dashboard/dist /usr/share/nginx/html
 
-# Copy nginx config
-COPY apps/dashboard/nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx config template
+COPY apps/dashboard/nginx.conf.template /etc/nginx/templates/default.conf.template
+
+# Railway uses PORT env variable
+ENV PORT=80
 
 EXPOSE 80
 
+# nginx:alpine with templates automatically uses envsubst
 CMD ["nginx", "-g", "daemon off;"]
-

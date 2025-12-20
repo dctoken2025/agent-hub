@@ -16,14 +16,23 @@ export async function apiRequest<T>(
   const method = options?.method || 'GET';
   
   // Se for POST/PUT/PATCH sem body, adiciona body vazio
-  const needsBody = ['POST', 'PUT', 'PATCH'].includes(method);
+  const needsBody = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
   const body = options?.body ?? (needsBody ? '{}' : undefined);
   
-  // Só adiciona Content-Type se houver body
+  // Obtém o token do localStorage
+  const token = localStorage.getItem('token');
+  
+  // Configura headers
   const headers: Record<string, string> = {
     ...options?.headers as Record<string, string>,
   };
   
+  // Adiciona Authorization se tiver token
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  // Adiciona Content-Type se houver body
   if (body) {
     headers['Content-Type'] = 'application/json';
   }
@@ -34,14 +43,26 @@ export async function apiRequest<T>(
     headers,
   });
 
+  // Se token expirou ou inválido, faz logout
+  if (response.status === 401) {
+    const data = await response.json().catch(() => ({}));
+    
+    // Se for erro de token (não de credenciais inválidas no login)
+    if (data.code === 'TOKEN_EXPIRED' || data.code === 'INVALID_TOKEN' || data.code === 'NO_TOKEN') {
+      localStorage.removeItem('token');
+      window.location.href = '/';
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+    
+    throw new Error(data.error || 'Não autorizado');
+  }
+
   if (!response.ok) {
     let errorMessage = `Erro ${response.status}: ${response.statusText}`;
     try {
       const errorData = await response.json();
-      // API pode retornar { error: "msg" } ou { message: "msg" }
       errorMessage = errorData.error || errorData.message || errorMessage;
     } catch {
-      // Se não conseguir parsear JSON, tenta texto
       try {
         const text = await response.text();
         if (text) errorMessage = text;
@@ -53,4 +74,15 @@ export async function apiRequest<T>(
   }
 
   return response.json();
+}
+
+// Helper para verificar se está autenticado
+export function isAuthenticated(): boolean {
+  return !!localStorage.getItem('token');
+}
+
+// Helper para fazer logout
+export function logout(): void {
+  localStorage.removeItem('token');
+  window.location.href = '/';
 }

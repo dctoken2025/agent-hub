@@ -1,155 +1,282 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { getScheduler } from '@agent-hub/core';
-import { getDb, agentLogs } from '../db/index.js';
-import { eq, desc, sql } from 'drizzle-orm';
-import { loadConfig } from './config.js';
+import { getDb, agentLogs, legalAnalyses } from '../db/index.js';
+import { eq, desc, sql, and } from 'drizzle-orm';
+import { authMiddleware } from '../middleware/auth.js';
+import { loadUserConfig } from './config.js';
+import { getAgentManager } from '../services/agent-manager.js';
 
 export const agentRoutes: FastifyPluginAsync = async (app) => {
-  const scheduler = getScheduler();
-
-  // Lista todos os agentes com métricas do banco
-  app.get('/', async () => {
-    const agents = scheduler.getAgents();
+  // Lista todos os agentes do usuário atual
+  app.get('/', { preHandler: [authMiddleware] }, async (request) => {
+    const userId = request.user!.id;
     const db = getDb();
-    
-    // Carrega configurações do banco para ter os valores mais atuais
-    const savedConfig = await loadConfig();
-    
-    // Se tiver banco, busca métricas persistidas
-    if (db) {
-      try {
-        const agentsWithStats = await Promise.all(
-          agents.map(async (agent) => {
-            let dbRunCount = 0;
-            let dbLastRun: Date | null = null;
+    const agentManager = getAgentManager();
 
-            // Para o Legal Agent, usa o número de análises jurídicas como proxy
-            if (agent.config.id === 'legal-agent') {
-              const { legalAnalyses } = await import('../db/index.js');
-              
-              const countResult = await db.select({
-                count: sql<number>`count(*)::int`,
-              }).from(legalAnalyses);
-              
-              const lastRunResult = await db.select({
-                analyzedAt: legalAnalyses.analyzedAt,
-              })
-                .from(legalAnalyses)
-                .orderBy(desc(legalAnalyses.analyzedAt))
-                .limit(1);
+    // Carrega configurações do usuário
+    const userConfig = await loadUserConfig(userId);
 
-              dbRunCount = countResult[0]?.count || 0;
-              dbLastRun = lastRunResult[0]?.analyzedAt || null;
-            } else {
-              // Para outros agentes, usa agent_logs
-              const countResult = await db.select({
-                count: sql<number>`count(*)::int`,
-              })
-                .from(agentLogs)
-                .where(eq(agentLogs.agentId, agent.config.id));
-              
-              const lastRunResult = await db.select({
-                createdAt: agentLogs.createdAt,
-              })
-                .from(agentLogs)
-                .where(eq(agentLogs.agentId, agent.config.id))
-                .orderBy(desc(agentLogs.createdAt))
-                .limit(1);
+    // Obtém agentes do usuário via AgentManager
+    const runningAgents = agentManager.getUserAgents(userId);
 
-              dbRunCount = countResult[0]?.count || 0;
-              dbLastRun = lastRunResult[0]?.createdAt || null;
-            }
+    // Monta lista de agentes com status
+    const agents = [];
 
-            // Pega o intervalo da configuração salva no banco (mais atual)
-            let savedInterval = agent.config.schedule?.value;
-            if (agent.config.id === 'email-agent' && savedConfig.emailAgent?.intervalMinutes) {
-              savedInterval = savedConfig.emailAgent.intervalMinutes;
-            } else if (agent.config.id === 'stablecoin-agent' && savedConfig.stablecoin?.checkInterval) {
-              savedInterval = savedConfig.stablecoin.checkInterval;
-            }
+    // Email Agent
+    const emailAgentRunning = runningAgents.find((a) => a.config.id.includes('email'));
+    if (userConfig.emailAgent.enabled) {
+      let dbRunCount = 0;
+      let dbLastRun: Date | null = null;
 
-            return {
-              ...agent,
-              config: {
-                ...agent.config,
-                schedule: agent.config.schedule ? {
-                  ...agent.config.schedule,
-                  value: savedInterval,
-                } : undefined,
-              },
-              // Usa o maior entre memória e banco (pois podem estar dessincronizados)
-              runCount: Math.max(agent.runCount, dbRunCount),
-              lastRun: dbLastRun || agent.lastRun,
-            };
-          })
-        );
-        
-        return { agents: agentsWithStats };
-      } catch (error) {
-        console.error('[AgentRoutes] Erro ao buscar métricas:', error);
+      if (db) {
+        try {
+          const countResult = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(agentLogs)
+            .where(
+              and(
+                eq(agentLogs.userId, userId),
+                eq(agentLogs.agentId, `email-agent-${userId}`)
+              )
+            );
+
+          const lastRunResult = await db
+            .select({ createdAt: agentLogs.createdAt })
+            .from(agentLogs)
+            .where(
+              and(
+                eq(agentLogs.userId, userId),
+                eq(agentLogs.agentId, `email-agent-${userId}`)
+              )
+            )
+            .orderBy(desc(agentLogs.createdAt))
+            .limit(1);
+
+          dbRunCount = countResult[0]?.count || 0;
+          dbLastRun = lastRunResult[0]?.createdAt || null;
+        } catch {
+          // Ignora erros de contagem
+        }
       }
+
+      agents.push({
+        config: {
+          id: 'email-agent',
+          name: 'Email Agent',
+          description: 'Agente de classificação e triagem de emails',
+          enabled: userConfig.emailAgent.enabled,
+          schedule: {
+            type: 'interval',
+            value: userConfig.emailAgent.intervalMinutes,
+          },
+        },
+        status: emailAgentRunning ? 'running' : 'stopped',
+        runCount: emailAgentRunning?.runCount || dbRunCount,
+        lastRun: emailAgentRunning?.lastRun || dbLastRun,
+      });
     }
-    
+
+    // Legal Agent
+    const legalAgentRunning = runningAgents.find((a) => a.config.id.includes('legal'));
+    if (userConfig.legalAgent.enabled) {
+      let dbRunCount = 0;
+      let dbLastRun: Date | null = null;
+
+      if (db) {
+        try {
+          const countResult = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(legalAnalyses)
+            .where(eq(legalAnalyses.userId, userId));
+
+          const lastRunResult = await db
+            .select({ analyzedAt: legalAnalyses.analyzedAt })
+            .from(legalAnalyses)
+            .where(eq(legalAnalyses.userId, userId))
+            .orderBy(desc(legalAnalyses.analyzedAt))
+            .limit(1);
+
+          dbRunCount = countResult[0]?.count || 0;
+          dbLastRun = lastRunResult[0]?.analyzedAt || null;
+        } catch {
+          // Ignora erros
+        }
+      }
+
+      agents.push({
+        config: {
+          id: 'legal-agent',
+          name: 'Legal Agent',
+          description: 'Agente de análise de contratos e documentos legais',
+          enabled: userConfig.legalAgent.enabled,
+          schedule: {
+            type: 'manual',
+          },
+        },
+        status: legalAgentRunning ? 'running' : 'stopped',
+        runCount: legalAgentRunning?.runCount || dbRunCount,
+        lastRun: legalAgentRunning?.lastRun || dbLastRun,
+      });
+    }
+
+    // Stablecoin Agent
+    const stablecoinAgentRunning = runningAgents.find((a) =>
+      a.config.id.includes('stablecoin')
+    );
+    if (userConfig.stablecoinAgent.enabled) {
+      let dbRunCount = 0;
+      let dbLastRun: Date | null = null;
+
+      if (db) {
+        try {
+          const countResult = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(agentLogs)
+            .where(
+              and(
+                eq(agentLogs.userId, userId),
+                eq(agentLogs.agentId, `stablecoin-agent-${userId}`)
+              )
+            );
+
+          const lastRunResult = await db
+            .select({ createdAt: agentLogs.createdAt })
+            .from(agentLogs)
+            .where(
+              and(
+                eq(agentLogs.userId, userId),
+                eq(agentLogs.agentId, `stablecoin-agent-${userId}`)
+              )
+            )
+            .orderBy(desc(agentLogs.createdAt))
+            .limit(1);
+
+          dbRunCount = countResult[0]?.count || 0;
+          dbLastRun = lastRunResult[0]?.createdAt || null;
+        } catch {
+          // Ignora erros
+        }
+      }
+
+      agents.push({
+        config: {
+          id: 'stablecoin-agent',
+          name: 'Stablecoin Agent',
+          description: 'Agente de monitoramento de stablecoins na blockchain',
+          enabled: userConfig.stablecoinAgent.enabled,
+          schedule: {
+            type: 'interval',
+            value: userConfig.stablecoinAgent.checkInterval,
+          },
+        },
+        status: stablecoinAgentRunning ? 'running' : 'stopped',
+        runCount: stablecoinAgentRunning?.runCount || dbRunCount,
+        lastRun: stablecoinAgentRunning?.lastRun || dbLastRun,
+      });
+    }
+
     return { agents };
   });
 
-  // Detalhes de um agente
-  app.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    const agent = scheduler.getAgent(request.params.id);
-    if (!agent) {
-      return reply.status(404).send({ error: 'Agente não encontrado' });
+  // Detalhes de um agente específico
+  app.get<{ Params: { id: string } }>(
+    '/:id',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const userId = request.user!.id;
+      const agentManager = getAgentManager();
+      const agentId = `${request.params.id}-${userId}`;
+
+      const agent = agentManager.getAgentInfo(userId, agentId);
+      if (!agent) {
+        return reply.status(404).send({ error: 'Agente não encontrado' });
+      }
+
+      return agent;
     }
-    return agent;
-  });
+  );
 
   // Inicia um agente
-  app.post<{ Params: { id: string } }>('/:id/start', async (request, reply) => {
-    try {
-      await scheduler.start(request.params.id);
-      return { success: true, message: 'Agente iniciado' };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erro desconhecido';
-      return reply.status(400).send({ error: message });
+  app.post<{ Params: { id: string } }>(
+    '/:id/start',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      try {
+        const userId = request.user!.id;
+        const agentManager = getAgentManager();
+
+        await agentManager.startAgent(userId, request.params.id);
+
+        return { success: true, message: 'Agente iniciado' };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Erro desconhecido';
+        return reply.status(400).send({ error: message });
+      }
     }
-  });
+  );
 
   // Para um agente
-  app.post<{ Params: { id: string } }>('/:id/stop', async (request, reply) => {
-    try {
-      await scheduler.stop(request.params.id);
-      return { success: true, message: 'Agente parado' };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erro desconhecido';
-      return reply.status(400).send({ error: message });
+  app.post<{ Params: { id: string } }>(
+    '/:id/stop',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      try {
+        const userId = request.user!.id;
+        const agentManager = getAgentManager();
+
+        await agentManager.stopAgent(userId, request.params.id);
+
+        return { success: true, message: 'Agente parado' };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Erro desconhecido';
+        return reply.status(400).send({ error: message });
+      }
     }
-  });
+  );
 
   // Executa agente uma vez
-  app.post<{ Params: { id: string } }>('/:id/run', async (request, reply) => {
-    try {
-      await scheduler.runOnce(request.params.id);
-      return { success: true, message: 'Execução iniciada' };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erro desconhecido';
-      return reply.status(400).send({ error: message });
-    }
-  });
+  app.post<{ Params: { id: string } }>(
+    '/:id/run',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      try {
+        const userId = request.user!.id;
+        const agentManager = getAgentManager();
 
-  // Inicia todos os agentes
-  app.post('/start-all', async () => {
-    await scheduler.startAll();
+        await agentManager.runAgentOnce(userId, request.params.id);
+
+        return { success: true, message: 'Execução iniciada' };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Erro desconhecido';
+        return reply.status(400).send({ error: message });
+      }
+    }
+  );
+
+  // Inicia todos os agentes do usuário
+  app.post('/start-all', { preHandler: [authMiddleware] }, async (request) => {
+    const userId = request.user!.id;
+    const agentManager = getAgentManager();
+
+    await agentManager.initializeForUser(userId);
+
     return { success: true, message: 'Todos os agentes iniciados' };
   });
 
-  // Para todos os agentes
-  app.post('/stop-all', async () => {
-    await scheduler.stopAll();
+  // Para todos os agentes do usuário
+  app.post('/stop-all', { preHandler: [authMiddleware] }, async (request) => {
+    const userId = request.user!.id;
+    const agentManager = getAgentManager();
+
+    await agentManager.stopForUser(userId);
+
     return { success: true, message: 'Todos os agentes parados' };
   });
 
-  // Logs dos agentes
-  app.get('/logs', async (request) => {
+  // Logs dos agentes do usuário
+  app.get('/logs', { preHandler: [authMiddleware] }, async (request) => {
+    const userId = request.user!.id;
     const db = getDb();
+    
     if (!db) {
       return { logs: [], total: 0 };
     }
@@ -158,15 +285,18 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
       const query = request.query as { agentId?: string; limit?: string };
       const limit = parseInt(query.limit || '100');
 
-      let queryBuilder = db.select().from(agentLogs);
-
+      const conditions = [eq(agentLogs.userId, userId)];
+      
       if (query.agentId) {
-        queryBuilder = queryBuilder.where(eq(agentLogs.agentId, query.agentId)) as typeof queryBuilder;
+        conditions.push(eq(agentLogs.agentId, query.agentId));
       }
 
-      const logs = await queryBuilder
-        .orderBy(desc(agentLogs.createdAt))
-        .limit(limit);
+      const queryBuilder = db
+        .select()
+        .from(agentLogs)
+        .where(and(...conditions));
+
+      const logs = await queryBuilder.orderBy(desc(agentLogs.createdAt)).limit(limit);
 
       return { logs, total: logs.length };
     } catch (error) {
@@ -175,10 +305,11 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  // Métricas gerais para o dashboard
-  app.get('/metrics', async () => {
+  // Métricas gerais do usuário
+  app.get('/metrics', { preHandler: [authMiddleware] }, async (request) => {
+    const userId = request.user!.id;
     const db = getDb();
-    
+
     if (!db) {
       return {
         totalExecutions: 0,
@@ -190,36 +321,40 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
-      // Total de execuções
-      const totalResult = await db.select({
-        count: sql<number>`count(*)::int`,
-      }).from(agentLogs);
+      // Total de execuções do usuário
+      const totalResult = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(agentLogs)
+        .where(eq(agentLogs.userId, userId));
 
       // Execuções com sucesso
-      const successResult = await db.select({
-        count: sql<number>`count(*)::int`,
-      })
+      const successResult = await db
+        .select({ count: sql<number>`count(*)::int` })
         .from(agentLogs)
-        .where(eq(agentLogs.success, true));
+        .where(and(eq(agentLogs.userId, userId), eq(agentLogs.success, true)));
 
       // Total de emails processados
-      const emailsResult = await db.select({
-        total: sql<number>`COALESCE(sum(processed_count), 0)::int`,
-      }).from(agentLogs);
+      const emailsResult = await db
+        .select({ total: sql<number>`COALESCE(sum(processed_count), 0)::int` })
+        .from(agentLogs)
+        .where(eq(agentLogs.userId, userId));
 
       // Última execução
-      const lastResult = await db.select({
-        createdAt: agentLogs.createdAt,
-        agentName: agentLogs.agentName,
-      })
+      const lastResult = await db
+        .select({
+          createdAt: agentLogs.createdAt,
+          agentName: agentLogs.agentName,
+        })
         .from(agentLogs)
+        .where(eq(agentLogs.userId, userId))
         .orderBy(desc(agentLogs.createdAt))
         .limit(1);
 
       return {
         totalExecutions: totalResult[0]?.count || 0,
         successfulExecutions: successResult[0]?.count || 0,
-        failedExecutions: (totalResult[0]?.count || 0) - (successResult[0]?.count || 0),
+        failedExecutions:
+          (totalResult[0]?.count || 0) - (successResult[0]?.count || 0),
         emailsProcessed: emailsResult[0]?.total || 0,
         lastExecution: lastResult[0] || null,
       };

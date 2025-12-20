@@ -1,7 +1,83 @@
-import { pgTable, text, timestamp, boolean, integer, jsonb, serial, varchar } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, boolean, integer, jsonb, serial, varchar, uuid } from 'drizzle-orm/pg-core';
 
 // ===========================================
-// Configurações do Sistema
+// Usuários
+// ===========================================
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+  name: varchar('name', { length: 255 }),
+  role: varchar('role', { length: 20 }).notNull().default('user'), // 'admin' ou 'user'
+  gmailTokens: jsonb('gmail_tokens'), // Tokens OAuth individuais do Gmail
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// ===========================================
+// Configurações Globais (só admin modifica)
+// ===========================================
+export const globalConfig = pgTable('global_config', {
+  id: serial('id').primaryKey(),
+  key: varchar('key', { length: 100 }).notNull().unique(),
+  value: text('value'),
+  isSecret: boolean('is_secret').default(false),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// ===========================================
+// Configurações por Usuário
+// ===========================================
+export const userConfigs = pgTable('user_configs', {
+  id: serial('id').primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
+  
+  // Preferências de email
+  vipSenders: text('vip_senders').array(),
+  ignoreSenders: text('ignore_senders').array(),
+  
+  // Configurações dos agentes (JSON)
+  emailAgentConfig: jsonb('email_agent_config').default({
+    enabled: true,
+    intervalMinutes: 10,
+    maxEmailsPerRun: 50,
+    processContracts: true,
+    unreadOnly: true,
+    customRules: [],
+  }),
+  legalAgentConfig: jsonb('legal_agent_config').default({
+    enabled: true,
+    autoAnalyze: true,
+    maxDocumentSizeMB: 10,
+    contractKeywords: ['contrato', 'acordo', 'termo', 'aditivo', 'procuração', 'minuta', 'proposta'],
+    highRiskKeywords: ['penalidade', 'multa', 'rescisão', 'indenização', 'exclusividade'],
+  }),
+  stablecoinAgentConfig: jsonb('stablecoin_agent_config').default({
+    enabled: false,
+    checkInterval: 60,
+    thresholds: {
+      largeMint: 10000000,
+      largeBurn: 10000000,
+      largeTransfer: 50000000,
+      supplyChangePercent: 1,
+      frequencyPerHour: 100,
+    },
+  }),
+  
+  // Notificações
+  notificationConfig: jsonb('notification_config').default({
+    slackWebhookUrl: '',
+    telegramBotToken: '',
+    telegramChatId: '',
+  }),
+  
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// ===========================================
+// Configurações do Sistema (LEGADO - será migrado)
 // ===========================================
 export const appConfig = pgTable('app_config', {
   id: serial('id').primaryKey(),
@@ -16,7 +92,8 @@ export const appConfig = pgTable('app_config', {
 // ===========================================
 export const classifiedEmails = pgTable('classified_emails', {
   id: serial('id').primaryKey(),
-  emailId: varchar('email_id', { length: 255 }).notNull().unique(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  emailId: varchar('email_id', { length: 255 }).notNull(),
   threadId: varchar('thread_id', { length: 255 }),
   fromEmail: varchar('from_email', { length: 255 }).notNull(),
   fromName: varchar('from_name', { length: 255 }),
@@ -51,6 +128,7 @@ export const classifiedEmails = pgTable('classified_emails', {
 // ===========================================
 export const agentLogs = pgTable('agent_logs', {
   id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   agentId: varchar('agent_id', { length: 100 }).notNull(),
   agentName: varchar('agent_name', { length: 255 }),
   eventType: varchar('event_type', { length: 50 }).notNull(), // started, completed, failed, paused
@@ -67,6 +145,7 @@ export const agentLogs = pgTable('agent_logs', {
 // ===========================================
 export const legalAnalyses = pgTable('legal_analyses', {
   id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   emailId: varchar('email_id', { length: 255 }).notNull(),
   documentName: varchar('document_name', { length: 500 }).notNull(),
   documentType: varchar('document_type', { length: 100 }),
@@ -105,6 +184,7 @@ export const legalAnalyses = pgTable('legal_analyses', {
 // ===========================================
 export const stablecoins = pgTable('stablecoins', {
   id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   address: varchar('address', { length: 42 }).notNull(),
   name: varchar('name', { length: 100 }).notNull(),
   symbol: varchar('symbol', { length: 10 }).notNull(),
@@ -121,6 +201,7 @@ export const stablecoins = pgTable('stablecoins', {
 // ===========================================
 export const stablecoinEvents = pgTable('stablecoin_events', {
   id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   stablecoinId: integer('stablecoin_id').notNull(),
   txHash: varchar('tx_hash', { length: 66 }).notNull(),
   blockNumber: integer('block_number').notNull(),
@@ -141,6 +222,7 @@ export const stablecoinEvents = pgTable('stablecoin_events', {
 // ===========================================
 export const stablecoinAnomalies = pgTable('stablecoin_anomalies', {
   id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   stablecoinId: integer('stablecoin_id'),
   eventId: integer('event_id'),
   alertType: varchar('alert_type', { length: 50 }).notNull(), // large_mint, large_burn, large_transfer, supply_change, frequency_spike
@@ -158,6 +240,7 @@ export const stablecoinAnomalies = pgTable('stablecoin_anomalies', {
 // ===========================================
 export const supplySnapshots = pgTable('supply_snapshots', {
   id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   stablecoinId: integer('stablecoin_id').notNull(),
   supply: text('supply').notNull(), // bigint como string
   supplyFormatted: text('supply_formatted'),
@@ -171,6 +254,7 @@ export const supplySnapshots = pgTable('supply_snapshots', {
 // ===========================================
 export const dailyStats = pgTable('daily_stats', {
   id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   date: varchar('date', { length: 10 }).notNull(), // YYYY-MM-DD
   totalEmails: integer('total_emails').default(0),
   urgentCount: integer('urgent_count').default(0),
@@ -181,22 +265,42 @@ export const dailyStats = pgTable('daily_stats', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 
+// ===========================================
 // Types para uso no código
+// ===========================================
+
+// Usuários
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+
+// Configurações
+export type GlobalConfig = typeof globalConfig.$inferSelect;
+export type NewGlobalConfig = typeof globalConfig.$inferInsert;
+
+export type UserConfig = typeof userConfigs.$inferSelect;
+export type NewUserConfig = typeof userConfigs.$inferInsert;
+
+// Legado
 export type AppConfig = typeof appConfig.$inferSelect;
 export type NewAppConfig = typeof appConfig.$inferInsert;
 
+// Emails
 export type ClassifiedEmail = typeof classifiedEmails.$inferSelect;
 export type NewClassifiedEmail = typeof classifiedEmails.$inferInsert;
 
+// Logs
 export type AgentLog = typeof agentLogs.$inferSelect;
 export type NewAgentLog = typeof agentLogs.$inferInsert;
 
+// Stats
 export type DailyStat = typeof dailyStats.$inferSelect;
 export type NewDailyStat = typeof dailyStats.$inferInsert;
 
+// Legal
 export type LegalAnalysis = typeof legalAnalyses.$inferSelect;
 export type NewLegalAnalysis = typeof legalAnalyses.$inferInsert;
 
+// Stablecoins
 export type Stablecoin = typeof stablecoins.$inferSelect;
 export type NewStablecoin = typeof stablecoins.$inferInsert;
 

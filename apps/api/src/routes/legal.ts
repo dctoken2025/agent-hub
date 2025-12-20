@@ -1,39 +1,14 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { getDb } from '../db/index.js';
 import { sql } from 'drizzle-orm';
+import { authMiddleware } from '../middleware/auth.js';
 
 export const legalRoutes: FastifyPluginAsync = async (app) => {
-
-  // Migração para adicionar novos campos (executar uma vez)
-  app.post('/migrate-status', async (_request, reply) => {
+  // Lista todas as análises jurídicas do usuário
+  app.get('/analyses', { preHandler: [authMiddleware] }, async (request) => {
+    const userId = request.user!.id;
     const db = getDb();
-    if (!db) {
-      return reply.status(500).send({ error: 'Banco não disponível' });
-    }
-
-    try {
-      // Adiciona novos campos se não existirem
-      await db.execute(sql.raw(`
-        ALTER TABLE legal_analyses 
-        ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'pending',
-        ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP,
-        ADD COLUMN IF NOT EXISTS resolved_by VARCHAR(255),
-        ADD COLUMN IF NOT EXISTS resolution_notes TEXT,
-        ADD COLUMN IF NOT EXISTS thread_id VARCHAR(255),
-        ADD COLUMN IF NOT EXISTS group_id VARCHAR(255)
-      `));
-      
-      console.log('[LegalRoutes] Migração de status concluída');
-      return { success: true, message: 'Campos de status adicionados com sucesso' };
-    } catch (error) {
-      console.error('[LegalRoutes] Erro na migração:', error);
-      return reply.status(500).send({ error: 'Erro na migração' });
-    }
-  });
-
-  // Lista todas as análises jurídicas
-  app.get('/analyses', async (request) => {
-    const db = getDb();
+    
     if (!db) {
       return { analyses: [], total: 0 };
     }
@@ -42,7 +17,6 @@ export const legalRoutes: FastifyPluginAsync = async (app) => {
       const query = request.query as { limit?: string; riskLevel?: string; status?: string };
       const limit = parseInt(query.limit || '100');
 
-      // Query direto no SQL já que a tabela foi criada manualmente
       let sqlQuery = `
         SELECT 
           id,
@@ -72,24 +46,19 @@ export const legalRoutes: FastifyPluginAsync = async (app) => {
           thread_id as "threadId",
           group_id as "groupId"
         FROM legal_analyses
+        WHERE user_id = '${userId}'
       `;
 
-      const conditions: string[] = [];
-      
       if (query.riskLevel) {
-        conditions.push(`overall_risk = '${query.riskLevel}'`);
+        sqlQuery += ` AND overall_risk = '${query.riskLevel}'`;
       }
-      
+
       if (query.status) {
         if (query.status === 'pending') {
-          conditions.push(`(status IS NULL OR status = 'pending' OR status = 'in_progress')`);
+          sqlQuery += ` AND (status IS NULL OR status = 'pending' OR status = 'in_progress')`;
         } else {
-          conditions.push(`status = '${query.status}'`);
+          sqlQuery += ` AND status = '${query.status}'`;
         }
-      }
-      
-      if (conditions.length > 0) {
-        sqlQuery += ` WHERE ${conditions.join(' AND ')}`;
       }
 
       sqlQuery += ` ORDER BY analyzed_at DESC LIMIT ${limit}`;
@@ -97,9 +66,9 @@ export const legalRoutes: FastifyPluginAsync = async (app) => {
       const result = await db.execute(sql.raw(sqlQuery));
       const analyses = result as unknown as any[];
 
-      return { 
-        analyses: analyses || [], 
-        total: analyses?.length || 0 
+      return {
+        analyses: analyses || [],
+        total: analyses?.length || 0,
       };
     } catch (error) {
       console.error('[LegalRoutes] Erro ao buscar análises:', error);
@@ -107,9 +76,11 @@ export const legalRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  // Estatísticas das análises
-  app.get('/stats', async () => {
+  // Estatísticas das análises do usuário
+  app.get('/stats', { preHandler: [authMiddleware] }, async (request) => {
+    const userId = request.user!.id;
     const db = getDb();
+    
     if (!db) {
       return { total: 0, byRisk: {}, byStatus: {}, requiresAttention: 0 };
     }
@@ -127,6 +98,7 @@ export const legalRoutes: FastifyPluginAsync = async (app) => {
           COUNT(CASE WHEN status = 'in_progress' THEN 1 END) as in_progress,
           COUNT(CASE WHEN status = 'resolved' THEN 1 END) as resolved
         FROM legal_analyses
+        WHERE user_id = '${userId}'
       `));
 
       const stats = (result as any[])[0] || {};
@@ -153,11 +125,13 @@ export const legalRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // Atualiza status de uma análise
-  app.patch<{ 
-    Params: { id: string }; 
-    Body: { status: string; notes?: string } 
-  }>('/analyses/:id/status', async (request, reply) => {
+  app.patch<{
+    Params: { id: string };
+    Body: { status: string; notes?: string };
+  }>('/analyses/:id/status', { preHandler: [authMiddleware] }, async (request, reply) => {
+    const userId = request.user!.id;
     const db = getDb();
+    
     if (!db) {
       return reply.status(500).send({ error: 'Banco não disponível' });
     }
@@ -166,25 +140,34 @@ export const legalRoutes: FastifyPluginAsync = async (app) => {
     const { status, notes } = request.body || {};
 
     if (!status || !['pending', 'in_progress', 'resolved'].includes(status)) {
-      return reply.status(400).send({ error: 'Status inválido. Use: pending, in_progress ou resolved' });
+      return reply
+        .status(400)
+        .send({ error: 'Status inválido. Use: pending, in_progress ou resolved' });
     }
 
     try {
+      // Verifica se a análise pertence ao usuário
+      const existing = await db.execute(sql.raw(`
+        SELECT id FROM legal_analyses WHERE id = ${id} AND user_id = '${userId}'
+      `));
+
+      if ((existing as any[]).length === 0) {
+        return reply.status(404).send({ error: 'Análise não encontrada' });
+      }
+
       const resolvedAt = status === 'resolved' ? new Date().toISOString() : null;
-      
+
       await db.execute(sql.raw(`
         UPDATE legal_analyses 
         SET 
           status = '${status}',
           resolved_at = ${resolvedAt ? `'${resolvedAt}'` : 'NULL'},
           resolution_notes = ${notes ? `'${notes.replace(/'/g, "''")}'` : 'resolution_notes'}
-        WHERE id = ${id}
+        WHERE id = ${id} AND user_id = '${userId}'
       `));
 
-      console.log(`[LegalRoutes] Status atualizado: análise ${id} -> ${status}`);
-
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: `Status atualizado para ${status}`,
         status,
       };
@@ -194,54 +177,52 @@ export const legalRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  // Remove análises duplicadas (mantém apenas a mais recente por documento)
-  app.delete('/duplicates', async (_request, reply) => {
+  // Remove análises duplicadas do usuário
+  app.delete('/duplicates', { preHandler: [authMiddleware] }, async (request, reply) => {
+    const userId = request.user!.id;
     const db = getDb();
+    
     if (!db) {
       return reply.status(500).send({ error: 'Banco não disponível' });
     }
 
     try {
-      // Primeiro, conta quantas duplicatas existem
-      const countBefore = await db.execute(sql.raw(`SELECT COUNT(*) as total FROM legal_analyses`));
-      const totalBefore = parseInt((countBefore as any[])[0]?.total || '0');
-      console.log(`[LegalRoutes] Total de análises antes: ${totalBefore}`);
-
-      // Encontra os IDs que devem ser mantidos (o maior ID de cada document_name)
-      const idsToKeep = await db.execute(sql.raw(`
-        SELECT MAX(id) as id FROM legal_analyses GROUP BY document_name
+      // Conta antes
+      const countBefore = await db.execute(sql.raw(`
+        SELECT COUNT(*) as total FROM legal_analyses WHERE user_id = '${userId}'
       `));
-      const keepIds = (idsToKeep as any[]).map(r => r.id);
-      console.log(`[LegalRoutes] IDs a manter: ${keepIds.join(', ')}`);
+      const totalBefore = parseInt((countBefore as any[])[0]?.total || '0');
+
+      // Encontra IDs a manter
+      const idsToKeep = await db.execute(sql.raw(`
+        SELECT MAX(id) as id FROM legal_analyses WHERE user_id = '${userId}' GROUP BY document_name
+      `));
+      const keepIds = (idsToKeep as any[]).map((r) => r.id);
 
       if (keepIds.length === 0) {
-        return { 
-          success: true, 
+        return {
+          success: true,
           message: 'Nenhuma análise encontrada',
           removed: 0,
         };
       }
 
-      // Deleta todos os IDs que NÃO estão na lista de manter
-      const deleteResult = await db.execute(sql.raw(`
+      // Deleta duplicatas
+      await db.execute(sql.raw(`
         DELETE FROM legal_analyses 
-        WHERE id NOT IN (${keepIds.join(',')})
+        WHERE user_id = '${userId}' AND id NOT IN (${keepIds.join(',')})
       `));
-      
-      console.log('[LegalRoutes] Resultado do DELETE:', deleteResult);
 
-      // Conta quantas sobraram
-      const countAfter = await db.execute(sql.raw(`SELECT COUNT(*) as total FROM legal_analyses`));
+      // Conta depois
+      const countAfter = await db.execute(sql.raw(`
+        SELECT COUNT(*) as total FROM legal_analyses WHERE user_id = '${userId}'
+      `));
       const totalAfter = parseInt((countAfter as any[])[0]?.total || '0');
       const removed = totalBefore - totalAfter;
 
-      console.log(`[LegalRoutes] Total após remoção: ${totalAfter}, Removidas: ${removed}`);
-
-      return { 
-        success: true, 
-        message: removed > 0 
-          ? `${removed} duplicata(s) removida(s)` 
-          : 'Nenhuma duplicata encontrada',
+      return {
+        success: true,
+        message: removed > 0 ? `${removed} duplicata(s) removida(s)` : 'Nenhuma duplicata encontrada',
         removed,
         totalBefore,
         totalAfter,
@@ -253,62 +234,101 @@ export const legalRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // Busca análises relacionadas por threadId
-  app.get<{ Params: { threadId: string } }>('/analyses/thread/:threadId', async (request, reply) => {
-    const db = getDb();
-    if (!db) {
-      return reply.status(500).send({ error: 'Banco não disponível' });
-    }
-
-    try {
-      const { threadId } = request.params;
+  app.get<{ Params: { threadId: string } }>(
+    '/analyses/thread/:threadId',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const userId = request.user!.id;
+      const db = getDb();
       
-      const result = await db.execute(sql.raw(`
-        SELECT 
-          id,
-          email_id as "emailId",
-          document_name as "documentName",
-          document_type as "documentType",
-          overall_risk as "overallRisk",
-          COALESCE(status, 'pending') as "status",
-          analyzed_at as "analyzedAt",
-          summary
-        FROM legal_analyses 
-        WHERE thread_id = '${threadId}'
-        ORDER BY analyzed_at DESC
-      `));
-
-      return { 
-        threadId,
-        analyses: result as any[],
-        count: (result as any[]).length,
-      };
-    } catch (error) {
-      console.error('[LegalRoutes] Erro ao buscar análises por thread:', error);
-      return reply.status(500).send({ error: 'Erro ao buscar análises relacionadas' });
-    }
-  });
-
-  // Detalhes de uma análise específica
-  app.get<{ Params: { id: string } }>('/analyses/:id', async (request, reply) => {
-    const db = getDb();
-    if (!db) {
-      return reply.status(500).send({ error: 'Banco não disponível' });
-    }
-
-    try {
-      const result = await db.execute(sql.raw(`
-        SELECT * FROM legal_analyses WHERE id = ${request.params.id}
-      `));
-
-      const analysis = (result as any[])[0];
-      if (!analysis) {
-        return reply.status(404).send({ error: 'Análise não encontrada' });
+      if (!db) {
+        return reply.status(500).send({ error: 'Banco não disponível' });
       }
 
-      return { analysis };
+      try {
+        const { threadId } = request.params;
+
+        const result = await db.execute(sql.raw(`
+          SELECT 
+            id,
+            email_id as "emailId",
+            document_name as "documentName",
+            document_type as "documentType",
+            overall_risk as "overallRisk",
+            COALESCE(status, 'pending') as "status",
+            analyzed_at as "analyzedAt",
+            summary
+          FROM legal_analyses 
+          WHERE thread_id = '${threadId}' AND user_id = '${userId}'
+          ORDER BY analyzed_at DESC
+        `));
+
+        return {
+          threadId,
+          analyses: result as any[],
+          count: (result as any[]).length,
+        };
+      } catch (error) {
+        console.error('[LegalRoutes] Erro ao buscar análises por thread:', error);
+        return reply.status(500).send({ error: 'Erro ao buscar análises relacionadas' });
+      }
+    }
+  );
+
+  // Detalhes de uma análise específica
+  app.get<{ Params: { id: string } }>(
+    '/analyses/:id',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const userId = request.user!.id;
+      const db = getDb();
+      
+      if (!db) {
+        return reply.status(500).send({ error: 'Banco não disponível' });
+      }
+
+      try {
+        const result = await db.execute(sql.raw(`
+          SELECT * FROM legal_analyses WHERE id = ${request.params.id} AND user_id = '${userId}'
+        `));
+
+        const analysis = (result as any[])[0];
+        if (!analysis) {
+          return reply.status(404).send({ error: 'Análise não encontrada' });
+        }
+
+        return { analysis };
+      } catch (error) {
+        console.error('[LegalRoutes] Erro ao buscar análise:', error);
+        return reply.status(500).send({ error: 'Erro ao buscar análise' });
+      }
+    }
+  );
+
+  // Migração para adicionar novos campos (só admin pode executar)
+  app.post('/migrate-status', async (_request, reply) => {
+    const db = getDb();
+    if (!db) {
+      return reply.status(500).send({ error: 'Banco não disponível' });
+    }
+
+    try {
+      await db.execute(sql.raw(`
+        ALTER TABLE legal_analyses 
+        ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'pending',
+        ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS resolved_by VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS resolution_notes TEXT,
+        ADD COLUMN IF NOT EXISTS thread_id VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS group_id VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS user_id UUID
+      `));
+
+      console.log('[LegalRoutes] Migração de status concluída');
+      return { success: true, message: 'Campos de status adicionados com sucesso' };
     } catch (error) {
-      console.error('[LegalRoutes] Erro ao buscar análise:', error);
-      return reply.status(500).send({ error: 'Erro ao buscar análise' });
+      console.error('[LegalRoutes] Erro na migração:', error);
+      return reply.status(500).send({ error: 'Erro na migração' });
     }
   });
 };
