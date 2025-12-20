@@ -39,8 +39,9 @@ interface ConfigResponse {
 
 export function Settings() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'anthropic' | 'gmail' | 'alchemy' | 'user' | 'notifications'>('anthropic');
+  const { user, isAdmin } = useAuth();
+  // Tab inicial: admin vê anthropic, usuário normal vê user
+  const [activeTab, setActiveTab] = useState<'anthropic' | 'gmail' | 'alchemy' | 'user' | 'notifications'>('user');
   
   // Form states
   const [anthropicKey, setAnthropicKey] = useState('');
@@ -160,13 +161,17 @@ export function Settings() {
 
   const isConfigured = data?.isConfigured;
 
-  const tabs = [
-    { id: 'anthropic', label: 'Claude AI', icon: Key, configured: isConfigured?.anthropic },
-    { id: 'gmail', label: 'Gmail', icon: Mail, configured: isConfigured?.gmail },
-    { id: 'alchemy', label: 'Alchemy', icon: Coins, configured: isConfigured?.alchemy },
-    { id: 'user', label: 'Usuário', icon: User, configured: isConfigured?.userEmail },
-    { id: 'notifications', label: 'Notificações', icon: Bell, configured: isConfigured?.slack || isConfigured?.telegram },
+  // Tabs globais (só admin) e tabs do usuário (todos)
+  const allTabs = [
+    { id: 'anthropic', label: 'Claude AI', icon: Key, configured: isConfigured?.anthropic, adminOnly: true },
+    { id: 'gmail', label: 'Gmail', icon: Mail, configured: isConfigured?.gmail, adminOnly: true },
+    { id: 'alchemy', label: 'Alchemy', icon: Coins, configured: isConfigured?.alchemy, adminOnly: true },
+    { id: 'user', label: 'Usuário', icon: User, configured: isConfigured?.userEmail, adminOnly: false },
+    { id: 'notifications', label: 'Notificações', icon: Bell, configured: isConfigured?.slack || isConfigured?.telegram, adminOnly: false },
   ];
+
+  // Filtra tabs baseado no role do usuário
+  const tabs = allTabs.filter(tab => !tab.adminOnly || isAdmin);
 
   if (isLoading) {
     return (
