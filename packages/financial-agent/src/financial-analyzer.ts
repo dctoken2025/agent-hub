@@ -91,6 +91,9 @@ export class FinancialAnalyzer {
       
       return result.items.map((item, index) => {
         // Se temos info de boleto extraída por regex e o item não tem alguns campos, preenche
+        // Garante que amount é sempre um número válido (0 se não identificado pela IA)
+        const amount = typeof item.amount === 'number' && !isNaN(item.amount) ? item.amount : 0;
+        
         const enrichedItem: FinancialItem = {
           emailId,
           threadId,
@@ -101,7 +104,7 @@ export class FinancialAnalyzer {
           // Dados financeiros
           type: item.type,
           status: this.determineStatus(item.dueDate),
-          amount: item.amount,
+          amount: amount,
           currency: item.currency || 'BRL',
           dueDate: item.dueDate || (boletoInfo?.dueDate ? this.parseDate(boletoInfo.dueDate) : undefined),
           issueDate: item.issueDate,
@@ -124,7 +127,7 @@ export class FinancialAnalyzer {
           priority: item.priority,
           notes: item.notes,
           relatedProject: item.relatedProject,
-          requiresApproval: item.requiresApproval || item.amount >= this.config.approvalThreshold,
+          requiresApproval: item.requiresApproval || amount >= this.config.approvalThreshold,
           analyzedAt: new Date(),
           confidence: item.confidence,
           // Anexo relacionado (primeiro documento, se houver)
