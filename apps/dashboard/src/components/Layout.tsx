@@ -15,7 +15,8 @@ import {
   Shield,
   DollarSign,
   Brain,
-  Users
+  Users,
+  CheckSquare
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,7 @@ const navigation = [
   { name: 'Emails', href: '/emails', icon: Mail },
   { name: 'Análises Jurídicas', href: '/legal', icon: Scale },
   { name: 'Financeiro', href: '/financial', icon: DollarSign },
+  { name: 'Tarefas', href: '/tasks', icon: CheckSquare },
   { name: 'Stablecoins', href: '/stablecoins', icon: Coins },
   { name: 'Agentes', href: '/agents', icon: Bot },
   { name: 'Config. Agentes', href: '/agent-config', icon: Sliders },

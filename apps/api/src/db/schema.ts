@@ -373,6 +373,73 @@ export const supplySnapshots = pgTable('supply_snapshots', {
 });
 
 // ===========================================
+// Action Items (Tarefas extraídas de emails)
+// ===========================================
+export const actionItems = pgTable('action_items', {
+  id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  emailId: varchar('email_id', { length: 255 }).notNull(),
+  threadId: varchar('thread_id', { length: 255 }),
+  
+  // Contexto do email
+  emailSubject: text('email_subject').notNull(),
+  emailFrom: varchar('email_from', { length: 255 }).notNull(),
+  emailDate: timestamp('email_date'),
+  
+  // Stakeholder
+  stakeholderName: varchar('stakeholder_name', { length: 255 }).notNull(),
+  stakeholderCompany: varchar('stakeholder_company', { length: 255 }),
+  stakeholderRole: varchar('stakeholder_role', { length: 255 }),
+  stakeholderEmail: varchar('stakeholder_email', { length: 255 }),
+  stakeholderPhone: varchar('stakeholder_phone', { length: 50 }),
+  stakeholderImportance: varchar('stakeholder_importance', { length: 20 }).default('normal'), // vip, high, normal
+  
+  // Projeto
+  projectName: varchar('project_name', { length: 255 }),
+  projectCode: varchar('project_code', { length: 100 }),
+  projectType: varchar('project_type', { length: 100 }),
+  
+  // A tarefa
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description').notNull(),
+  originalText: text('original_text').notNull(),
+  category: varchar('category', { length: 30 }).notNull(), // confirmation, status_update, deadline, document, approval, action, question, information, followup
+  
+  // Prazo
+  deadlineDate: timestamp('deadline_date'),
+  deadlineRelative: varchar('deadline_relative', { length: 255 }),
+  deadlineIsExplicit: boolean('deadline_is_explicit').default(false),
+  deadlineDependsOn: text('deadline_depends_on'),
+  deadlineUrgency: varchar('deadline_urgency', { length: 20 }), // immediate, soon, normal, flexible
+  
+  // Status
+  status: varchar('status', { length: 20 }).notNull().default('pending'), // pending, in_progress, waiting, done, cancelled
+  
+  // Resposta
+  responseText: text('response_text'),
+  respondedAt: timestamp('responded_at'),
+  respondedBy: varchar('responded_by', { length: 255 }),
+  
+  // Prioridade
+  priority: varchar('priority', { length: 20 }).notNull().default('medium'), // critical, high, medium, low
+  priorityReason: varchar('priority_reason', { length: 255 }),
+  
+  // Sugestões da IA
+  suggestedResponse: text('suggested_response'),
+  suggestedAction: text('suggested_action'),
+  relatedDocuments: text('related_documents'), // JSON array
+  blockedByExternal: varchar('blocked_by_external', { length: 255 }),
+  
+  // Confiança
+  confidence: integer('confidence'), // 0-100
+  
+  // Metadados
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+  completedAt: timestamp('completed_at'),
+});
+
+// ===========================================
 // Logs de Uso da AI (Anthropic/OpenAI)
 // ===========================================
 export const aiUsageLogs = pgTable('ai_usage_logs', {
@@ -471,3 +538,7 @@ export type NewSupplySnapshot = typeof supplySnapshots.$inferInsert;
 // AI Usage
 export type AIUsageLog = typeof aiUsageLogs.$inferSelect;
 export type NewAIUsageLog = typeof aiUsageLogs.$inferInsert;
+
+// Action Items
+export type ActionItemDB = typeof actionItems.$inferSelect;
+export type NewActionItemDB = typeof actionItems.$inferInsert;
