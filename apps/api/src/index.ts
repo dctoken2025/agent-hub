@@ -16,6 +16,7 @@ import { configRoutes } from './routes/config.js';
 import { legalRoutes } from './routes/legal.js';
 import { stablecoinRoutes } from './routes/stablecoins.js';
 import { financialRoutes } from './routes/financial.js';
+import { getAgentManager } from './services/agent-manager.js';
 
 // Inicializa banco de dados
 initDatabase();
@@ -70,8 +71,19 @@ async function main() {
     console.log(`   POST /api/auth/register - Criar conta`);
     console.log(`   POST /api/auth/login    - Fazer login`);
     console.log(`   GET  /api/auth/me       - Dados do usuário`);
-    console.log(`\n📧 Agentes são inicializados após login do usuário`);
-    console.log(`   Cada usuário tem seus próprios agentes e configurações\n`);
+    console.log(`\n📧 Agentes autônomos`);
+    console.log(`   Auto-iniciando agentes de usuários ativos...\n`);
+
+    // Auto-inicia agentes após servidor subir (com delay para garantir que DB está pronto)
+    setTimeout(async () => {
+      try {
+        const agentManager = getAgentManager();
+        await agentManager.autoStartAgents();
+      } catch (error) {
+        console.error('[Server] Erro ao auto-iniciar agentes:', error);
+      }
+    }, 3000); // 3 segundos de delay
+
   } catch (err) {
     app.log.error(err);
     process.exit(1);

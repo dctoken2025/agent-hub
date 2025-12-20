@@ -102,6 +102,9 @@ export const userConfigs = pgTable('user_configs', {
     telegramChatId: '',
   }),
   
+  // Estado dos agentes (para auto-start após reinício do servidor)
+  agentsActive: boolean('agents_active').default(false),
+  
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });

@@ -307,6 +307,9 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
     const userId = request.user!.id;
     const agentManager = getAgentManager();
 
+    // Salva estado de "ativo" no banco para auto-start após reinício
+    await agentManager.setAgentsActiveState(userId, true);
+
     // Inicia de forma assíncrona para não bloquear a request
     // A primeira execução acontece em background
     agentManager.initializeForUser(userId).catch((err) => {
@@ -320,6 +323,9 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
   app.post('/stop-all', { preHandler: [authMiddleware] }, async (request) => {
     const userId = request.user!.id;
     const agentManager = getAgentManager();
+
+    // Salva estado de "inativo" no banco
+    await agentManager.setAgentsActiveState(userId, false);
 
     await agentManager.stopForUser(userId);
 

@@ -10,7 +10,7 @@ import { EmailAgent, type EmailAgentConfig, type EmailAgentResult } from '@agent
 import { LegalAgent, type LegalAgentConfig } from '@agent-hub/legal-agent';
 import { FinancialAgent, type FinancialAgentConfig } from '@agent-hub/financial-agent';
 import { StablecoinAgent, type StablecoinAgentConfig } from '@agent-hub/stablecoin-agent';
-import { getDb, users, agentLogs, stablecoins, stablecoinEvents, stablecoinAnomalies, supplySnapshots } from '../db/index.js';
+import { getDb, users, userConfigs, agentLogs, stablecoins, stablecoinEvents, stablecoinAnomalies, supplySnapshots } from '../db/index.js';
 import { eq } from 'drizzle-orm';
 import { loadUserConfig, loadGlobalConfig } from '../routes/config.js';
 import { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase } from '../routes/emails.js';
@@ -537,6 +537,65 @@ export class AgentManager {
     );
     await Promise.all(stopPromises);
     console.log('[AgentManager] Todos os agentes parados');
+  }
+
+  /**
+   * Salva o estado de ativação dos agentes no banco.
+   */
+  async setAgentsActiveState(userId: string, active: boolean): Promise<void> {
+    const db = getDb();
+    if (!db) return;
+
+    try {
+      await db
+        .update(userConfigs)
+        .set({ agentsActive: active, updatedAt: new Date() })
+        .where(eq(userConfigs.userId, userId));
+      console.log(`[AgentManager] Estado dos agentes salvo: ${userId} -> ${active ? 'ativo' : 'inativo'}`);
+    } catch (error) {
+      console.error('[AgentManager] Erro ao salvar estado dos agentes:', error);
+    }
+  }
+
+  /**
+   * Auto-inicia agentes de todos os usuários que tinham agentes ativos.
+   * Chamado quando o servidor inicia.
+   */
+  async autoStartAgents(): Promise<void> {
+    const db = getDb();
+    if (!db) {
+      console.log('[AgentManager] Banco não disponível para auto-start');
+      return;
+    }
+
+    try {
+      // Busca todos os usuários com agentes ativos
+      const activeConfigs = await db
+        .select({ userId: userConfigs.userId })
+        .from(userConfigs)
+        .where(eq(userConfigs.agentsActive, true));
+
+      if (activeConfigs.length === 0) {
+        console.log('[AgentManager] 🔄 Nenhum usuário com agentes ativos para auto-iniciar');
+        return;
+      }
+
+      console.log(`[AgentManager] 🚀 Auto-iniciando agentes para ${activeConfigs.length} usuário(s)...`);
+
+      for (const config of activeConfigs) {
+        try {
+          console.log(`[AgentManager] 🔄 Iniciando agentes para ${config.userId}...`);
+          await this.initializeForUser(config.userId);
+          console.log(`[AgentManager] ✅ Agentes iniciados para ${config.userId}`);
+        } catch (error) {
+          console.error(`[AgentManager] ❌ Erro ao auto-iniciar agentes para ${config.userId}:`, error);
+        }
+      }
+
+      console.log('[AgentManager] ✅ Auto-start concluído');
+    } catch (error) {
+      console.error('[AgentManager] ❌ Erro no auto-start:', error);
+    }
   }
 }
 
