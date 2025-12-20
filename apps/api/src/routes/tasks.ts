@@ -488,4 +488,40 @@ Atenciosamente`;
       return reply.status(500).send({ error: 'Erro ao gerar resposta' });
     }
   });
+
+  // Excluir item de tarefa
+  app.delete<{ Params: { id: string } }>(
+    '/items/:id',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const userId = request.user!.id;
+      const itemId = request.params.id;
+      const db = getDb();
+
+      if (!db) {
+        return reply.status(500).send({ error: 'Banco de dados não disponível' });
+      }
+
+      try {
+        const result = await db
+          .delete(actionItems)
+          .where(
+            and(
+              eq(actionItems.id, parseInt(itemId)),
+              eq(actionItems.userId, userId)
+            )
+          )
+          .returning({ id: actionItems.id });
+
+        if (result.length === 0) {
+          return reply.status(404).send({ error: 'Item não encontrado' });
+        }
+
+        return { success: true, message: 'Tarefa excluída com sucesso' };
+      } catch (error) {
+        console.error('[TaskRoutes] Erro ao excluir tarefa:', error);
+        return reply.status(500).send({ error: 'Erro ao excluir tarefa' });
+      }
+    }
+  );
 };

@@ -225,7 +225,7 @@ export default function Financial() {
 
   // Marca item como pago
   const markAsPaid = useMutation({
-    mutationFn: (id: number) => 
+    mutationFn: (id: number) =>
       apiRequest(`/financial/items/${id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'paid' }),
@@ -238,6 +238,22 @@ export default function Financial() {
       setSelectedItem(null);
     },
     onError: () => dialog.error('Erro ao atualizar status'),
+  });
+
+  // Exclui item
+  const deleteItem = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest(`/financial/items/${id}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-items'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-stats'] });
+      dialog.success('Item excluído com sucesso!');
+      setSelectedItem(null);
+    },
+    onError: () => dialog.error('Erro ao excluir item'),
   });
 
   const isLoading = loadingDashboard || loadingItems;
@@ -453,7 +469,9 @@ export default function Financial() {
           item={selectedItem}
           onClose={() => setSelectedItem(null)}
           onMarkAsPaid={() => markAsPaid.mutate(selectedItem.id)}
+          onDelete={() => deleteItem.mutate(selectedItem.id)}
           isPending={markAsPaid.isPending}
+          isDeleting={deleteItem.isPending}
         />
       )}
     </div>
@@ -520,13 +538,17 @@ function ItemRow({ item, onClick, showStatus }: { item: FinancialItem; onClick: 
 function FinancialDetailsModal({ 
   item, 
   onClose, 
-  onMarkAsPaid, 
-  isPending 
+  onMarkAsPaid,
+  onDelete,
+  isPending,
+  isDeleting
 }: { 
   item: FinancialItem; 
   onClose: () => void; 
   onMarkAsPaid: () => void;
+  onDelete: () => void;
   isPending: boolean;
+  isDeleting: boolean;
 }) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -813,18 +835,26 @@ function FinancialDetailsModal({
           </div>
 
           {/* Ações */}
-          {item.status !== 'paid' && (
-            <div className="pt-4 border-t flex gap-3">
+          <div className="pt-4 border-t flex gap-3">
+            {item.status !== 'paid' && (
               <button
                 onClick={onMarkAsPaid}
-                disabled={isPending}
+                disabled={isPending || isDeleting}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
               >
                 <CheckCircle className="h-5 w-5" />
                 {isPending ? 'Salvando...' : 'Marcar como Pago'}
               </button>
-            </div>
-          )}
+            )}
+            <button
+              onClick={onDelete}
+              disabled={isPending || isDeleting}
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 disabled:opacity-50 font-medium transition-colors"
+            >
+              <X className="h-5 w-5" />
+              {isDeleting ? 'Excluindo...' : 'Excluir'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -148,6 +148,20 @@ export function Tasks() {
     },
   });
 
+  // Delete item mutation
+  const deleteItemMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest(`/tasks/items/${id}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['task-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['task-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['task-items'] });
+      setSelectedItem(null);
+    },
+  });
+
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleDateString('pt-BR', {
@@ -553,7 +567,8 @@ export function Tasks() {
                         updateStatusMutation.mutate({ id: selectedItem.id, status: 'in_progress' });
                         closeTaskDetail();
                       }}
-                      className="flex-1 py-2 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                      disabled={updateStatusMutation.isPending || deleteItemMutation.isPending}
+                      className="flex-1 py-2 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
                     >
                       🔄 Em Andamento
                     </button>
@@ -562,7 +577,8 @@ export function Tasks() {
                         updateStatusMutation.mutate({ id: selectedItem.id, status: 'done' });
                         closeTaskDetail();
                       }}
-                      className="flex-1 py-2 px-4 bg-green-500 text-white rounded-lg hover:bg-green-600"
+                      disabled={updateStatusMutation.isPending || deleteItemMutation.isPending}
+                      className="flex-1 py-2 px-4 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
                     >
                       ✅ Concluir
                     </button>
@@ -574,11 +590,19 @@ export function Tasks() {
                       updateStatusMutation.mutate({ id: selectedItem.id, status: 'pending' });
                       closeTaskDetail();
                     }}
-                    className="flex-1 py-2 px-4 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                    disabled={updateStatusMutation.isPending || deleteItemMutation.isPending}
+                    className="flex-1 py-2 px-4 bg-gray-500 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50"
                   >
                     ↩️ Reabrir
                   </button>
                 )}
+                <button
+                  onClick={() => deleteItemMutation.mutate(selectedItem.id)}
+                  disabled={updateStatusMutation.isPending || deleteItemMutation.isPending}
+                  className="py-2 px-4 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
+                >
+                  {deleteItemMutation.isPending ? '...' : '🗑️ Excluir'}
+                </button>
               </div>
             </div>
           </div>

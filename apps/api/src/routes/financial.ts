@@ -485,6 +485,38 @@ export const financialRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // Excluir item financeiro
+  app.delete<{ Params: { id: string } }>(
+    '/items/:id',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const userId = request.user!.id;
+      const itemId = request.params.id;
+      const db = getDb();
+
+      if (!db) {
+        return reply.status(500).send({ error: 'Banco de dados não disponível' });
+      }
+
+      try {
+        const result = await db.execute(sql.raw(`
+          DELETE FROM financial_items 
+          WHERE id = ${itemId} AND user_id = '${userId}'
+          RETURNING id
+        `));
+
+        if ((result as any[]).length === 0) {
+          return reply.status(404).send({ error: 'Item não encontrado' });
+        }
+
+        return { success: true, message: 'Item excluído com sucesso' };
+      } catch (error) {
+        console.error('[FinancialRoutes] Erro ao excluir item:', error);
+        return reply.status(500).send({ error: 'Erro ao excluir item' });
+      }
+    }
+  );
+
   // Atualizar status de itens vencidos automaticamente
   app.post('/update-overdue', { preHandler: [authMiddleware] }, async (request) => {
     const userId = request.user!.id;
