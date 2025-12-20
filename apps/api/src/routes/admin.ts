@@ -291,7 +291,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   // ===========================================
   // Estatísticas gerais do sistema
   // ===========================================
-  app.get('/stats', async (request, reply) => {
+  app.get('/stats', async (_request, reply) => {
     const db = getDb();
     if (!db) {
       return reply.status(500).send({ error: 'Banco de dados não disponível' });
