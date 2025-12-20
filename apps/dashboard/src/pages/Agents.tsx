@@ -3,7 +3,6 @@ import {
   Bot, 
   Play, 
   Pause, 
-  RotateCcw,
   Activity,
   Lock,
   Clock,
@@ -38,18 +37,13 @@ export function Agents() {
     refetchInterval: 5000,
   });
 
-  const startMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/agents/${id}/start`, { method: 'POST' }),
+  const startAllMutation = useMutation({
+    mutationFn: () => apiRequest('/agents/start-all', { method: 'POST' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
   });
 
-  const stopMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/agents/${id}/stop`, { method: 'POST' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
-  });
-
-  const runOnceMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/agents/${id}/run`, { method: 'POST' }),
+  const stopAllMutation = useMutation({
+    mutationFn: () => apiRequest('/agents/stop-all', { method: 'POST' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
   });
 
@@ -154,24 +148,25 @@ export function Agents() {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => apiRequest('/agents/start-all', { method: 'POST' })}
-            disabled={!isAccountActive || isTrialExpired}
+            onClick={() => startAllMutation.mutate()}
+            disabled={!isAccountActive || isTrialExpired || startAllMutation.isPending}
             className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-lg transition-colors",
+              "flex items-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-50",
               isAccountActive && !isTrialExpired
                 ? "bg-green-600 text-white hover:bg-green-700" 
                 : "bg-gray-400 text-gray-200 cursor-not-allowed"
             )}
           >
             <Play className="h-4 w-4" />
-            Iniciar Todos
+            {startAllMutation.isPending ? 'Iniciando...' : 'Iniciar Todos'}
           </button>
           <button
-            onClick={() => apiRequest('/agents/stop-all', { method: 'POST' })}
-            className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
+            onClick={() => stopAllMutation.mutate()}
+            disabled={stopAllMutation.isPending}
+            className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors disabled:opacity-50"
           >
             <Pause className="h-4 w-4" />
-            Parar Todos
+            {stopAllMutation.isPending ? 'Parando...' : 'Parar Todos'}
           </button>
         </div>
       </div>
@@ -255,46 +250,6 @@ export function Agents() {
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex gap-2">
-                {agent.status === 'running' ? (
-                  <button
-                    onClick={() => stopMutation.mutate(agent.config.id)}
-                    disabled={stopMutation.isPending}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors disabled:opacity-50"
-                  >
-                    <Pause className="h-4 w-4" />
-                    Parar
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => startMutation.mutate(agent.config.id)}
-                    disabled={startMutation.isPending || !isAccountActive || isTrialExpired}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg transition-colors disabled:opacity-50",
-                      isAccountActive && !isTrialExpired
-                        ? "bg-green-600 text-white hover:bg-green-700" 
-                        : "bg-gray-400 text-gray-200 cursor-not-allowed"
-                    )}
-                  >
-                    {isAccountActive && !isTrialExpired ? <Play className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                    Iniciar
-                  </button>
-                )}
-                <button
-                  onClick={() => runOnceMutation.mutate(agent.config.id)}
-                  disabled={runOnceMutation.isPending || !isAccountActive || isTrialExpired}
-                  className={cn(
-                    "flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-50",
-                    isAccountActive && !isTrialExpired
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90" 
-                      : "bg-gray-400 text-gray-200 cursor-not-allowed"
-                  )}
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  Executar
-                </button>
-              </div>
             </div>
           ))}
         </div>
