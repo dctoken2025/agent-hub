@@ -147,8 +147,21 @@ ${attachmentInfo}
    */
   private buildSystemPrompt(): string {
     const today = new Date().toISOString().split('T')[0];
-    
+
+    let contextSection = '';
+    if (this.config.customContext) {
+      contextSection = `
+═══════════════════════════════════════════════════════════════
+CONTEXTO DO USUÁRIO (IMPORTANTE - Use essas informações para personalizar a análise)
+═══════════════════════════════════════════════════════════════
+
+${this.config.customContext}
+
+`;
+    }
+
     return `Você é um assistente financeiro especializado em análise de cobranças e pagamentos corporativos.
+${contextSection}
 
 Sua tarefa é analisar emails sobre cobranças, boletos, faturas e pagamentos e extrair informações estruturadas.
 

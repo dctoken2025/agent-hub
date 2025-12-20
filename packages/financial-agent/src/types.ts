@@ -90,6 +90,9 @@ export interface FinancialAgentConfig {
   
   // Valor mínimo para requerer aprovação
   approvalThreshold: number;
+  
+  // Contexto personalizado para a IA
+  customContext?: string;
 }
 
 export const FinancialAgentConfigSchema = z.object({

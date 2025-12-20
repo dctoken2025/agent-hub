@@ -188,6 +188,7 @@ interface EmailAgentSettings {
   customRules: ClassificationRule[];
   startDate?: string;
   lastProcessedAt?: string;
+  customContext?: string;
 }
 
 interface LegalAgentSettings {
@@ -196,6 +197,7 @@ interface LegalAgentSettings {
   maxDocumentSizeMB: number;
   contractKeywords: string[];
   highRiskKeywords: string[];
+  customContext?: string;
 }
 
 interface StablecoinAgentSettings {
@@ -216,6 +218,7 @@ interface FinancialAgentSettings {
   urgentDaysBeforeDue: number;
   approvalThreshold: number;
   financialKeywords: string[];
+  customContext?: string;
 }
 
 interface AgentConfigResponse {
@@ -547,6 +550,32 @@ export default function AgentConfig() {
               </div>
             </div>
 
+            {/* Contexto Personalizado */}
+            <div className="space-y-2 border-t pt-4">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 text-amber-500" />
+                Contexto Personalizado para a IA
+              </label>
+              <textarea
+                value={emailForm.customContext || ''}
+                onChange={(e) => {
+                  setEmailForm({ ...emailForm, customContext: e.target.value });
+                  setEmailChanged(true);
+                }}
+                placeholder="Descreva seu contexto profissional, empresa, área de atuação, preferências de classificação...
+
+Exemplos:
+- Sou CEO de uma fintech de pagamentos
+- Priorize emails de investidores e parceiros bancários
+- Ignore newsletters de tecnologia
+- Clientes enterprise são sempre prioridade alta"
+                className="w-full px-3 py-2 border rounded-lg bg-background h-32 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Essas informações serão usadas pela IA para personalizar a classificação dos seus emails.
+              </p>
+            </div>
+
             {/* Botão Salvar Email Agent */}
             <div className="flex justify-end">
               <button
@@ -853,6 +882,32 @@ export default function AgentConfig() {
               />
             </div>
 
+            {/* Contexto Personalizado */}
+            <div className="space-y-2 border-t pt-4">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 text-amber-500" />
+                Contexto Personalizado para a IA
+              </label>
+              <textarea
+                value={legalForm.customContext || ''}
+                onChange={(e) => {
+                  setLegalForm({ ...legalForm, customContext: e.target.value });
+                  setLegalChanged(true);
+                }}
+                placeholder="Descreva o contexto jurídico da sua empresa...
+
+Exemplos:
+- Somos uma startup de tecnologia, foco em contratos de SaaS
+- Área de atuação: mercado financeiro e regulação do BC
+- Priorize cláusulas de propriedade intelectual
+- Somos compradores, não vendedores (análise do ponto de vista do contratante)"
+                className="w-full px-3 py-2 border rounded-lg bg-background h-32 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Essas informações serão usadas pela IA para personalizar a análise de contratos.
+              </p>
+            </div>
+
             {/* Botão Salvar Legal Agent */}
             <div className="flex justify-end">
               <button
@@ -996,6 +1051,32 @@ export default function AgentConfig() {
                 className="w-full px-3 py-2 border rounded-lg bg-background h-32 font-mono text-sm"
                 placeholder="boleto&#10;fatura&#10;pagamento&#10;cobrança"
               />
+            </div>
+
+            {/* Contexto Personalizado */}
+            <div className="space-y-2 border-t pt-4">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 text-amber-500" />
+                Contexto Personalizado para a IA
+              </label>
+              <textarea
+                value={financialForm.customContext || ''}
+                onChange={(e) => {
+                  setFinancialForm({ ...financialForm, customContext: e.target.value });
+                  setFinancialChanged(true);
+                }}
+                placeholder="Descreva o contexto financeiro da sua empresa...
+
+Exemplos:
+- Fornecedores principais: AWS, Google Cloud, bancos parceiros
+- Categorize despesas de marketing como 'marketing', não 'serviço'
+- Pagamentos acima de R$ 10.000 sempre requerem aprovação
+- Centro de custo padrão: Operações"
+                className="w-full px-3 py-2 border rounded-lg bg-background h-32 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Essas informações serão usadas pela IA para personalizar a análise financeira.
+              </p>
             </div>
 
             {/* Botão Salvar */}

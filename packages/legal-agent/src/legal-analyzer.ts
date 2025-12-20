@@ -6,8 +6,10 @@ import { ContractAnalysisSchema } from './types.js';
  * Analisador de documentos legais usando Claude AI.
  */
 export class LegalAnalyzer {
-  constructor(_config: LegalAgentConfig) {
-    // Config disponível para extensões futuras
+  private config: LegalAgentConfig;
+
+  constructor(config: LegalAgentConfig) {
+    this.config = config;
   }
 
   /**
@@ -92,7 +94,20 @@ ${document.text.substring(0, 50000)}${document.text.length > 50000 ? '\n[...docu
    * System prompt para análise jurídica.
    */
   private buildSystemPrompt(): string {
+    let contextSection = '';
+    if (this.config.customContext) {
+      contextSection = `
+═══════════════════════════════════════════════════════════════
+CONTEXTO DO USUÁRIO (IMPORTANTE - Use essas informações para personalizar a análise)
+═══════════════════════════════════════════════════════════════
+
+${this.config.customContext}
+
+`;
+    }
+
     return `Você é um advogado corporativo sênior especializado em análise de contratos comerciais, com foco em:
+${contextSection}
 - Contratos de serviços financeiros e fintech
 - Acordos de tecnologia e SaaS
 - Contratos de parceria e distribuição

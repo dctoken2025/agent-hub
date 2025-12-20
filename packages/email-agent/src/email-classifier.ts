@@ -346,7 +346,22 @@ ${email.body.substring(0, 4000)}${email.body.length > 4000 ? '\n[...truncado...]
    * System prompt para a IA.
    */
   private buildSystemPrompt(): string {
-    return `Você é um assistente executivo especializado em triagem de emails corporativos para um profissional do mercado financeiro/fintech.
+    let basePrompt = `Você é um assistente executivo especializado em triagem de emails corporativos.`;
+    
+    // Adiciona contexto personalizado do usuário se disponível
+    if (this.config.customContext) {
+      basePrompt = `Você é um assistente executivo especializado em triagem de emails corporativos.
+
+═══════════════════════════════════════════════════════════════
+CONTEXTO DO USUÁRIO (IMPORTANTE - Use essas informações para personalizar a análise)
+═══════════════════════════════════════════════════════════════
+
+${this.config.customContext}
+
+═══════════════════════════════════════════════════════════════`;
+    }
+
+    return basePrompt + `
 
 Seu objetivo é analisar cada email e classificá-lo para ajudar o usuário a priorizar sua caixa de entrada de forma eficiente.
 

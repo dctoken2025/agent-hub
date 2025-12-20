@@ -36,6 +36,7 @@ export interface EmailAgentSettings {
   customRules: ClassificationRule[];
   startDate?: string;
   lastProcessedAt?: string;
+  customContext?: string; // Contexto personalizado para a IA
 }
 
 // Configuração do Legal Agent
@@ -45,6 +46,7 @@ export interface LegalAgentSettings {
   maxDocumentSizeMB: number;
   contractKeywords: string[];
   highRiskKeywords: string[];
+  customContext?: string; // Contexto personalizado para a IA
 }
 
 // Configuração do Stablecoin Agent
@@ -67,6 +69,7 @@ export interface FinancialAgentSettings {
   urgentDaysBeforeDue: number;
   approvalThreshold: number;
   financialKeywords: string[];
+  customContext?: string; // Contexto personalizado para a IA
 }
 
 // Configuração de Notificações

@@ -72,12 +72,15 @@ export interface ContractAnalysis {
 export interface LegalAgentConfig {
   // Tipos de documentos a analisar
   supportedMimeTypes: string[];
-  
+
   // Tamanho máximo de documento em bytes
   maxDocumentSize: number;
-  
+
   // Palavras-chave que indicam contrato
   contractKeywords: string[];
+  
+  // Contexto personalizado para a IA
+  customContext?: string;
 }
 
 export const LegalAgentConfigSchema = z.object({

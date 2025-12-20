@@ -420,6 +420,75 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // Marca um email específico como lido
+  app.post<{ Params: { emailId: string } }>(
+    '/:emailId/mark-read',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const userId = request.user!.id;
+      const { emailId } = request.params;
+
+      const db = getDb();
+      if (!db) {
+        return reply.status(500).send({ error: 'Banco de dados não disponível' });
+      }
+
+      try {
+        // Busca tokens do usuário
+        const [user] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+
+        if (!user?.gmailTokens) {
+          // Se não tem Gmail conectado, apenas atualiza no banco local
+          await db
+            .update(classifiedEmails)
+            .set({ isRead: true })
+            .where(
+              and(
+                eq(classifiedEmails.emailId, emailId),
+                eq(classifiedEmails.userId, userId)
+              )
+            );
+
+          return { success: true, message: 'Email marcado como lido (local)' };
+        }
+
+        // Importa o GmailClient e marca no Gmail
+        const { GmailClient } = await import('@agent-hub/email-agent');
+        const globalConfig = await loadGlobalConfig();
+
+        process.env.GMAIL_CLIENT_ID = globalConfig.gmail.clientId;
+        process.env.GMAIL_CLIENT_SECRET = globalConfig.gmail.clientSecret;
+
+        const gmailClient = new GmailClient();
+        await gmailClient.initialize();
+
+        await gmailClient.markAsRead(emailId);
+
+        // Atualiza no banco também
+        await db
+          .update(classifiedEmails)
+          .set({ isRead: true })
+          .where(
+            and(
+              eq(classifiedEmails.emailId, emailId),
+              eq(classifiedEmails.userId, userId)
+            )
+          );
+
+        return { success: true, message: 'Email marcado como lido' };
+      } catch (error) {
+        console.error('[EmailRoutes] Erro ao marcar como lido:', error);
+        return reply.status(500).send({
+          error: error instanceof Error ? error.message : 'Erro ao marcar email',
+        });
+      }
+    }
+  );
+
   // Marca emails como lidos por prioridade
   app.post<{ Body: { priority: string } }>(
     '/mark-read',

@@ -16,7 +16,7 @@ import {
   X,
   Loader2
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { cn, apiRequest } from '@/lib/utils';
 import { useDialog } from '@/components/Dialog';
 
@@ -90,8 +90,54 @@ export function Emails() {
   const [replyMessage, setReplyMessage] = useState('');
   const [bulkActionProgress, setBulkActionProgress] = useState<{ action: string; count: number; total: number } | null>(null);
   const [selectedEmail, setSelectedEmail] = useState<ClassifiedEmail | null>(null);
+  const markAsReadTimerRef = useRef<NodeJS.Timeout | null>(null);
   const queryClient = useQueryClient();
   const dialog = useDialog();
+
+  // Marca email como lido automaticamente após 3 segundos de visualização
+  useEffect(() => {
+    // Limpa timer anterior se existir
+    if (markAsReadTimerRef.current) {
+      clearTimeout(markAsReadTimerRef.current);
+      markAsReadTimerRef.current = null;
+    }
+
+    // Se tiver um email selecionado e ele não estiver lido
+    if (selectedEmail && !selectedEmail.isRead) {
+      markAsReadTimerRef.current = setTimeout(async () => {
+        try {
+          // Chama API para marcar como lido no Gmail
+          await apiRequest(`/emails/${selectedEmail.id}/mark-read`, {
+            method: 'POST',
+          });
+          
+          // Atualiza o cache local
+          queryClient.setQueryData(['emails'], (oldData: any) => {
+            if (!oldData?.emails) return oldData;
+            return {
+              ...oldData,
+              emails: oldData.emails.map((e: ClassifiedEmail) =>
+                e.id === selectedEmail.id ? { ...e, isRead: true } : e
+              ),
+            };
+          });
+
+          // Atualiza o estado do email selecionado
+          setSelectedEmail(prev => prev ? { ...prev, isRead: true } : null);
+          
+          console.log(`[Emails] ✅ Email marcado como lido: ${selectedEmail.subject}`);
+        } catch (error) {
+          console.error('[Emails] Erro ao marcar como lido:', error);
+        }
+      }, 3000); // 3 segundos
+    }
+
+    return () => {
+      if (markAsReadTimerRef.current) {
+        clearTimeout(markAsReadTimerRef.current);
+      }
+    };
+  }, [selectedEmail, queryClient]);
   
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['emails'],

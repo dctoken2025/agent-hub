@@ -94,6 +94,9 @@ export interface EmailAgentConfig {
   
   // Gmail OAuth tokens (para multi-tenant)
   gmailTokens?: Record<string, unknown>;
+  
+  // Contexto personalizado para a IA
+  customContext?: string;
 }
 
 export const EmailAgentConfigSchema = z.object({
