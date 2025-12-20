@@ -14,8 +14,6 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAdmin: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -28,84 +26,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   // Busca dados do usuário com o token
-  const fetchUser = useCallback(async () => {
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
-
+  const fetchUser = useCallback(async (authToken: string) => {
     try {
       const response = await fetch(`${API_URL}/auth/me`, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
+        return true;
       } else {
         // Token inválido ou expirado
         localStorage.removeItem('token');
         setToken(null);
         setUser(null);
+        return false;
       }
     } catch (error) {
       console.error('Erro ao buscar usuário:', error);
       localStorage.removeItem('token');
       setToken(null);
       setUser(null);
-    } finally {
+      return false;
+    }
+  }, []);
+
+  // Verifica token na URL (callback do Google OAuth) e no localStorage
+  useEffect(() => {
+    async function initAuth() {
+      // 1. Verifica se há token na URL (retorno do OAuth)
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get('token');
+      const isWelcome = params.get('welcome') === 'true';
+
+      if (urlToken) {
+        // Salva o token e limpa a URL
+        localStorage.setItem('token', urlToken);
+        setToken(urlToken);
+        
+        // Limpa parâmetros da URL mantendo o path
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+
+        // Busca dados do usuário
+        const success = await fetchUser(urlToken);
+        
+        if (success && isWelcome) {
+          // Primeiro acesso - poderia mostrar um toast de boas-vindas
+          console.log('Bem-vindo ao Agent Hub!');
+        }
+        
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Verifica token no localStorage
+      const storedToken = localStorage.getItem('token');
+      if (storedToken) {
+        await fetchUser(storedToken);
+      }
+      
       setIsLoading(false);
     }
-  }, [token]);
 
-  // Verifica token no startup
-  useEffect(() => {
-    fetchUser();
+    initAuth();
   }, [fetchUser]);
-
-  // Login
-  const login = async (email: string, password: string) => {
-    const response = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Erro ao fazer login');
-    }
-
-    setToken(data.token);
-    setUser(data.user);
-    localStorage.setItem('token', data.token);
-  };
-
-  // Registro
-  const register = async (email: string, password: string, name: string) => {
-    const response = await fetch(`${API_URL}/auth/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password, name }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Erro ao criar conta');
-    }
-
-    setToken(data.token);
-    setUser(data.user);
-    localStorage.setItem('token', data.token);
-  };
 
   // Logout
   const logout = () => {
@@ -116,7 +104,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Refresh user data
   const refreshUser = async () => {
-    await fetchUser();
+    if (token) {
+      await fetchUser(token);
+    }
   };
 
   return (
@@ -126,8 +116,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token,
         isLoading,
         isAdmin: user?.role === 'admin',
-        login,
-        register,
         logout,
         refreshUser,
       }}

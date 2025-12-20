@@ -39,7 +39,209 @@ async function getGlobalConfigs(): Promise<Record<string, string>> {
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   // ===========================================
-  // Registro de Usuário
+  // LOGIN COM GOOGLE (Principal)
+  // ===========================================
+  
+  // URL para iniciar login com Google
+  app.get('/google/url', async (request, reply) => {
+    const configs = await getGlobalConfigs();
+    
+    const clientId = configs['gmail.clientId'];
+    const redirectUri = configs['gmail.redirectUri'] || 
+      `${process.env.API_URL || 'http://localhost:3001'}/api/auth/google/callback`;
+    
+    if (!clientId) {
+      return reply.status(400).send({ 
+        error: 'Google OAuth não configurado pelo administrador',
+        code: 'GOOGLE_NOT_CONFIGURED'
+      });
+    }
+
+    // State para segurança (CSRF protection)
+    const state = Buffer.from(JSON.stringify({ 
+      timestamp: Date.now(),
+      nonce: Math.random().toString(36).substring(7),
+    })).toString('base64');
+
+    // Escopos: perfil do usuário + Gmail
+    const scopes = [
+      'openid',
+      'email',
+      'profile',
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.modify',
+      'https://www.googleapis.com/auth/gmail.send',
+    ].join(' ');
+
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+      `client_id=${clientId}&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+      `response_type=code&` +
+      `scope=${encodeURIComponent(scopes)}&` +
+      `access_type=offline&` +
+      `prompt=consent&` +
+      `state=${state}`;
+
+    // Retorna URL ou redireciona dependendo do Accept header
+    const acceptHeader = request.headers.accept || '';
+    if (acceptHeader.includes('application/json')) {
+      return { authUrl };
+    }
+    
+    return reply.redirect(authUrl);
+  });
+
+  // Callback do Google OAuth (Login/Registro)
+  app.get<{ 
+    Querystring: { code?: string; error?: string; state?: string } 
+  }>('/google/callback', async (request, reply) => {
+    const db = getDb();
+    const dashboardUrl = process.env.DASHBOARD_URL || 'http://localhost:5173';
+
+    if (!db) {
+      return reply.redirect(`${dashboardUrl}?error=database_unavailable`);
+    }
+
+    const { code, error } = request.query;
+
+    if (error) {
+      console.error('[Auth] Erro Google OAuth:', error);
+      return reply.redirect(`${dashboardUrl}?error=${error}`);
+    }
+
+    if (!code) {
+      return reply.redirect(`${dashboardUrl}?error=missing_code`);
+    }
+
+    try {
+      // Carrega configs globais
+      const configs = await getGlobalConfigs();
+      const clientId = configs['gmail.clientId'];
+      const clientSecret = configs['gmail.clientSecret'];
+      const redirectUri = configs['gmail.redirectUri'] || 
+        `${process.env.API_URL || 'http://localhost:3001'}/api/auth/google/callback`;
+
+      // 1. Troca o código por tokens
+      const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          code,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        }),
+      });
+
+      if (!tokenResponse.ok) {
+        const errorData = await tokenResponse.json() as { error_description?: string; error?: string };
+        console.error('[Auth] Erro ao trocar código:', errorData);
+        throw new Error(errorData.error_description || errorData.error || 'Erro ao obter tokens');
+      }
+
+      const tokens = await tokenResponse.json() as {
+        access_token: string;
+        refresh_token?: string;
+        id_token?: string;
+        expires_in: number;
+        scope: string;
+      };
+
+      // 2. Obtém informações do usuário do Google
+      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: {
+          Authorization: `Bearer ${tokens.access_token}`,
+        },
+      });
+
+      if (!userInfoResponse.ok) {
+        throw new Error('Erro ao obter informações do usuário');
+      }
+
+      const googleUser = await userInfoResponse.json() as {
+        id: string;
+        email: string;
+        name: string;
+        picture?: string;
+      };
+
+      console.log(`[Auth] Login Google: ${googleUser.email}`);
+
+      // 3. Cria ou atualiza usuário
+      let [existingUser] = await db.select()
+        .from(users)
+        .where(eq(users.email, googleUser.email.toLowerCase()))
+        .limit(1);
+
+      let user;
+      let isNewUser = false;
+
+      if (existingUser) {
+        // Atualiza tokens do Gmail
+        await db.update(users)
+          .set({ 
+            gmailTokens: tokens,
+            name: existingUser.name || googleUser.name, // Atualiza nome se não tinha
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, existingUser.id));
+
+        user = { ...existingUser, gmailTokens: tokens };
+        console.log(`[Auth] Usuário existente atualizado: ${user.email}`);
+      } else {
+        // Verifica se é o primeiro usuário (será admin)
+        const userCount = await db.select({ id: users.id }).from(users).limit(1);
+        const isFirstUser = userCount.length === 0;
+
+        // Cria novo usuário (sem senha - login apenas via Google)
+        const [newUser] = await db.insert(users).values({
+          email: googleUser.email.toLowerCase(),
+          passwordHash: '', // Sem senha - apenas Google login
+          name: googleUser.name,
+          role: isFirstUser ? 'admin' : 'user',
+          gmailTokens: tokens,
+          isActive: true,
+        }).returning();
+
+        // Cria configurações padrão
+        await db.insert(userConfigs).values({
+          userId: newUser.id,
+          vipSenders: [],
+          ignoreSenders: ['newsletter', 'marketing', 'noreply'],
+        });
+
+        user = newUser;
+        isNewUser = true;
+        console.log(`[Auth] Novo usuário criado: ${user.email} (role: ${user.role})`);
+      }
+
+      // 4. Gera JWT
+      const jwtToken = generateToken({
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      });
+
+      // 5. Redireciona para o dashboard com o token
+      const redirectUrl = new URL(dashboardUrl);
+      redirectUrl.searchParams.set('token', jwtToken);
+      if (isNewUser) {
+        redirectUrl.searchParams.set('welcome', 'true');
+      }
+
+      return reply.redirect(redirectUrl.toString());
+    } catch (err) {
+      console.error('[Auth] Erro no callback Google:', err);
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return reply.redirect(`${dashboardUrl}?error=${encodeURIComponent(message)}`);
+    }
+  });
+
+  // ===========================================
+  // Registro Manual (backup - ainda disponível)
   // ===========================================
   app.post<{
     Body: { email: string; password: string; name?: string };
@@ -51,7 +253,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const { email, password, name } = request.body;
 
-    // Validações
     if (!email || !password) {
       return reply.status(400).send({ error: 'Email e senha são obrigatórios' });
     }
@@ -60,13 +261,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'Senha deve ter pelo menos 6 caracteres' });
     }
 
-    // Verifica email formato básico
     if (!email.includes('@')) {
       return reply.status(400).send({ error: 'Email inválido' });
     }
 
     try {
-      // Verifica se email já existe
       const existing = await db.select()
         .from(users)
         .where(eq(users.email, email.toLowerCase()))
@@ -76,14 +275,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({ error: 'Este email já está cadastrado' });
       }
 
-      // Hash da senha
       const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-
-      // Verifica se é o primeiro usuário (será admin)
       const userCount = await db.select({ id: users.id }).from(users).limit(1);
       const isFirstUser = userCount.length === 0;
 
-      // Cria usuário
       const [newUser] = await db.insert(users).values({
         email: email.toLowerCase(),
         passwordHash,
@@ -92,23 +287,17 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         isActive: true,
       }).returning();
 
-      // Cria configurações padrão para o usuário
       await db.insert(userConfigs).values({
         userId: newUser.id,
         vipSenders: [],
         ignoreSenders: ['newsletter', 'marketing', 'noreply'],
       });
 
-      console.log(`[Auth] Novo usuário registrado: ${newUser.email} (role: ${newUser.role})`);
-
-      // Gera token
       const token = generateToken(newUser);
 
       return {
         success: true,
-        message: isFirstUser 
-          ? 'Conta de administrador criada com sucesso!' 
-          : 'Conta criada com sucesso!',
+        message: isFirstUser ? 'Conta de administrador criada!' : 'Conta criada!',
         token,
         user: {
           id: newUser.id,
@@ -119,14 +308,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       };
     } catch (error) {
       console.error('[Auth] Erro no registro:', error);
-      return reply.status(500).send({ 
-        error: 'Erro ao criar conta. Tente novamente.' 
-      });
+      return reply.status(500).send({ error: 'Erro ao criar conta' });
     }
   });
 
   // ===========================================
-  // Login
+  // Login Manual (backup)
   // ===========================================
   app.post<{
     Body: { email: string; password: string };
@@ -143,7 +330,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
-      // Busca usuário
       const [user] = await db.select()
         .from(users)
         .where(eq(users.email, email.toLowerCase()))
@@ -157,16 +343,20 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(401).send({ error: 'Conta desativada' });
       }
 
-      // Verifica senha
+      // Se usuário foi criado via Google (sem senha), orienta usar Google
+      if (!user.passwordHash) {
+        return reply.status(401).send({ 
+          error: 'Esta conta usa Login com Google. Clique em "Entrar com Google".',
+          useGoogle: true,
+        });
+      }
+
       const passwordValid = await bcrypt.compare(password, user.passwordHash);
       if (!passwordValid) {
         return reply.status(401).send({ error: 'Email ou senha incorretos' });
       }
 
-      // Gera token
       const token = generateToken(user);
-
-      console.log(`[Auth] Login: ${user.email}`);
 
       return {
         success: true,
@@ -243,7 +433,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         updates.name = name;
       }
 
-      // Mudança de senha
       if (currentPassword && newPassword) {
         if (newPassword.length < 6) {
           return reply.status(400).send({ error: 'Nova senha deve ter pelo menos 6 caracteres' });
@@ -253,6 +442,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           .from(users)
           .where(eq(users.id, userId))
           .limit(1);
+
+        if (!user.passwordHash) {
+          return reply.status(400).send({ error: 'Conta usa Login com Google, não é possível definir senha' });
+        }
 
         const passwordValid = await bcrypt.compare(currentPassword, user.passwordHash);
         if (!passwordValid) {
@@ -274,7 +467,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ===========================================
-  // Gmail OAuth - URL de Autorização
+  // Gmail OAuth - Reconectar (para usuários já logados)
   // ===========================================
   app.get('/gmail/url', { preHandler: [authMiddleware] }, async (request, reply) => {
     const configs = await getGlobalConfigs();
@@ -291,8 +484,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const userId = request.user!.id;
-
-    // Codifica userId no state para recuperar no callback
     const state = Buffer.from(JSON.stringify({ 
       userId,
       timestamp: Date.now(),
@@ -316,9 +507,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return { authUrl };
   });
 
-  // ===========================================
-  // Gmail OAuth - Callback
-  // ===========================================
+  // Gmail callback para reconexão
   app.get<{ 
     Querystring: { code?: string; error?: string; state?: string } 
   }>('/gmail/callback', async (request, reply) => {
@@ -331,7 +520,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const dashboardUrl = process.env.DASHBOARD_URL || 'http://localhost:5173';
 
     if (error) {
-      console.error('[Auth] Erro OAuth:', error);
       return reply.redirect(`${dashboardUrl}/settings?error=${error}`);
     }
 
@@ -340,7 +528,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
-      // Decodifica state para obter userId
       const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
       const userId = stateData.userId;
 
@@ -348,21 +535,15 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         return reply.redirect(`${dashboardUrl}/settings?error=invalid_state`);
       }
 
-      console.log(`[Auth] Gmail callback para usuário: ${userId}`);
-
-      // Carrega configs globais
       const configs = await getGlobalConfigs();
       const clientId = configs['gmail.clientId'];
       const clientSecret = configs['gmail.clientSecret'];
       const redirectUri = configs['gmail.redirectUri'] || 
         `${process.env.API_URL || 'http://localhost:3001'}/api/auth/gmail/callback`;
 
-      // Troca o código por tokens
       const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
           code,
           client_id: clientId,
@@ -373,27 +554,18 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       });
 
       if (!tokenResponse.ok) {
-        const errorData = await tokenResponse.json() as { error_description?: string; error?: string };
-        console.error('[Auth] Erro ao trocar código:', errorData);
-        throw new Error(errorData.error_description || errorData.error || 'Erro ao obter tokens');
+        const errorData = await tokenResponse.json() as { error_description?: string };
+        throw new Error(errorData.error_description || 'Erro ao obter tokens');
       }
 
       const tokens = await tokenResponse.json();
-      console.log('[Auth] Tokens Gmail obtidos com sucesso!');
 
-      // Salva tokens NO USUÁRIO ESPECÍFICO (não global!)
       await db.update(users)
-        .set({ 
-          gmailTokens: tokens,
-          updatedAt: new Date(),
-        })
+        .set({ gmailTokens: tokens, updatedAt: new Date() })
         .where(eq(users.id, userId));
-
-      console.log(`[Auth] Tokens salvos para usuário ${userId}`);
 
       return reply.redirect(`${dashboardUrl}/settings?gmail_auth=success`);
     } catch (err) {
-      console.error('[Auth] Erro:', err);
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       return reply.redirect(`${dashboardUrl}/settings?error=${encodeURIComponent(message)}`);
     }
@@ -414,7 +586,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         .where(eq(users.id, request.user!.id))
         .limit(1);
 
-      // Verifica se Gmail está configurado globalmente
       const configs = await getGlobalConfigs();
       const gmailConfigured = !!(configs['gmail.clientId'] && configs['gmail.clientSecret']);
 
@@ -423,7 +594,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         userHasConnected: !!user?.gmailTokens,
       };
     } catch (error) {
-      console.error('[Auth] Erro ao verificar status:', error);
       return reply.status(500).send({ error: 'Erro ao verificar status' });
     }
   });
@@ -439,29 +609,23 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       await db.update(users)
-        .set({ 
-          gmailTokens: null,
-          updatedAt: new Date(),
-        })
+        .set({ gmailTokens: null, updatedAt: new Date() })
         .where(eq(users.id, request.user!.id));
-
-      console.log(`[Auth] Gmail desconectado para usuário ${request.user!.id}`);
 
       return { success: true, message: 'Gmail desconectado' };
     } catch (error) {
-      console.error('[Auth] Erro ao desconectar:', error);
       return reply.status(500).send({ error: 'Erro ao desconectar Gmail' });
     }
   });
 
   // ===========================================
-  // Status Geral de Autenticação (público)
+  // Status Geral (público)
   // ===========================================
   app.get('/status', async () => {
     const configs = await getGlobalConfigs();
 
     return {
-      gmail: {
+      googleLogin: {
         configured: !!(configs['gmail.clientId'] && configs['gmail.clientSecret']),
       },
       anthropic: {
