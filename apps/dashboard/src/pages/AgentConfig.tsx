@@ -6,8 +6,7 @@ import {
   ChevronDown, ChevronUp, ToggleLeft, ToggleRight, Coins, Calendar
 } from 'lucide-react';
 import { useDialog } from '../components/Dialog';
-
-import { API_URL as API_BASE } from '../config';
+import { apiRequest } from '@/lib/utils';
 
 interface ClassificationRule {
   id: string;
@@ -64,14 +63,7 @@ interface AgentConfigResponse {
   stablecoinAgent: StablecoinAgentSettings;
 }
 
-async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  });
-  if (!res.ok) throw new Error(`API Error: ${res.status}`);
-  return res.json();
-}
+// Usa apiRequest de @/lib/utils que inclui o token de autenticação
 
 // Formata número para BRL
 function formatBRL(value: number): string {
