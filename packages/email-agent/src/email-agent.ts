@@ -207,18 +207,21 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
       const maxPerPage = 100;
       let pagesLoaded = 0;
       
-      // Defaults: 100 emails e 10 páginas no máximo
-      const maxEmailsPerRun = this.emailConfig.maxEmailsPerRun || 100;
+      // Defaults: 500 emails e 10 páginas no máximo (100 por página)
+      const maxEmailsPerRun = this.emailConfig.maxEmailsPerRun || 500;
       const maxPages = Math.min(Math.ceil(maxEmailsPerRun / maxPerPage), 10);
       
       console.log(`[EmailAgent] Buscando até ${maxEmailsPerRun} emails (max ${maxPages} páginas)...`);
       
+      console.log(`[EmailAgent] 🔍 Query: "${query}"`);
+      
       // Loop de paginação - busca TODAS as páginas
       while (pagesLoaded < maxPages) {
+        // Não passa labelIds para buscar de TODAS as categorias (Inbox, Promoções, Social, etc.)
         const { emails: pageEmails, nextPageToken } = await this.gmailClient.getEmails({
           query,
           maxResults: maxPerPage,
-          labelIds: this.emailConfig.labelsToProcess,
+          // labelIds removido para buscar de todas as categorias
           pageToken,
         });
         
