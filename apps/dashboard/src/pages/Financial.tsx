@@ -424,11 +424,11 @@ export default function Financial() {
             <div className="p-4 space-y-4">
               {/* Status e Tipo */}
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={cn("px-2 py-1 rounded text-xs font-medium", statusConfig[selectedItem.status].color)}>
-                  {statusConfig[selectedItem.status].label}
+                <span className={cn("px-2 py-1 rounded text-xs font-medium", statusConfig[selectedItem.status]?.color || 'bg-gray-100 text-gray-800')}>
+                  {statusConfig[selectedItem.status]?.label || selectedItem.status}
                 </span>
-                <span className={cn("px-2 py-1 rounded text-xs font-medium", typeConfig[selectedItem.type].color)}>
-                  {typeConfig[selectedItem.type].label}
+                <span className={cn("px-2 py-1 rounded text-xs font-medium", typeConfig[selectedItem.type]?.color || 'text-gray-600 bg-gray-100')}>
+                  {typeConfig[selectedItem.type]?.label || selectedItem.type}
                 </span>
                 {selectedItem.category && (
                   <span className="px-2 py-1 rounded text-xs font-medium bg-muted">
@@ -565,7 +565,7 @@ function ItemRow({ item, onClick, showStatus }: { item: FinancialItem; onClick: 
       onClick={onClick}
       className="w-full p-4 flex items-center gap-4 hover:bg-muted/50 text-left transition-colors"
     >
-      <div className={cn("p-2 rounded-lg", typeConfig[item.type]?.color)}>
+      <div className={cn("p-2 rounded-lg", typeConfig[item.type]?.color || 'text-gray-600 bg-gray-100')}>
         <TypeIcon className="h-5 w-5" />
       </div>
       <div className="flex-1 min-w-0">
@@ -591,8 +591,8 @@ function ItemRow({ item, onClick, showStatus }: { item: FinancialItem; onClick: 
           </p>
         )}
         {showStatus && (
-          <span className={cn("text-xs px-1.5 py-0.5 rounded", statusConfig[item.status].color)}>
-            {statusConfig[item.status].label}
+          <span className={cn("text-xs px-1.5 py-0.5 rounded", statusConfig[item.status]?.color || 'bg-gray-100 text-gray-800')}>
+            {statusConfig[item.status]?.label || item.status}
           </span>
         )}
       </div>
