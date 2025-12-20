@@ -503,14 +503,15 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
   // ROTAS DO USUÁRIO
   // ===========================================
 
-  // Obtém configurações do usuário atual
+  // Obtém configurações do usuário atual (formato compatível com Settings.tsx)
   app.get('/', { preHandler: [authMiddleware] }, async (request) => {
     const userId = request.user!.id;
     const userConfig = await loadUserConfig(userId);
     const globalCfg = await loadGlobalConfig();
 
-    // Busca se usuário tem Gmail conectado
+    // Busca dados do usuário
     const db = getDb();
+    let userEmail = '';
     let hasGmailConnected = false;
     
     if (db) {
@@ -518,23 +519,42 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
         .from(users)
         .where(eq(users.id, userId))
         .limit(1);
+      userEmail = user?.email || '';
       hasGmailConnected = !!user?.gmailTokens;
     }
 
+    // Formato compatível com Settings.tsx
     return {
       config: {
-        vipSenders: userConfig.vipSenders,
-        ignoreSenders: userConfig.ignoreSenders,
-        emailAgent: userConfig.emailAgent,
-        legalAgent: userConfig.legalAgent,
-        stablecoinAgent: userConfig.stablecoinAgent,
-        notifications: userConfig.notifications,
+        anthropic: { apiKey: globalCfg.anthropic.apiKey ? '••••••••' : '' },
+        gmail: { 
+          clientId: globalCfg.gmail.clientId ? '••••••••' : '', 
+          clientSecret: globalCfg.gmail.clientSecret ? '••••••••' : '',
+          redirectUri: globalCfg.gmail.redirectUri,
+        },
+        alchemy: { apiKey: globalCfg.alchemy.apiKey ? '••••••••' : '' },
+        user: {
+          email: userEmail,
+          vipSenders: userConfig.vipSenders,
+          ignoreSenders: userConfig.ignoreSenders,
+        },
+        notifications: userConfig.notifications || { slackWebhookUrl: '', telegramBotToken: '', telegramChatId: '' },
+        settings: {
+          emailCheckInterval: userConfig.emailAgent.intervalMinutes,
+          stablecoinCheckInterval: userConfig.stablecoinAgent.checkInterval,
+        },
+        stablecoin: {
+          thresholds: userConfig.stablecoinAgent.thresholds,
+        },
       },
-      status: {
-        hasGmailConnected,
-        gmailConfiguredByAdmin: !!(globalCfg.gmail.clientId && globalCfg.gmail.clientSecret),
-        anthropicConfigured: !!globalCfg.anthropic.apiKey,
-        alchemyConfigured: !!globalCfg.alchemy.apiKey,
+      isConfigured: {
+        anthropic: !!globalCfg.anthropic.apiKey,
+        gmail: !!(globalCfg.gmail.clientId && globalCfg.gmail.clientSecret),
+        alchemy: !!globalCfg.alchemy.apiKey,
+        userEmail: !!userEmail,
+        slack: !!userConfig.notifications?.slackWebhookUrl,
+        telegram: !!(userConfig.notifications?.telegramBotToken && userConfig.notifications?.telegramChatId),
+        gmailConnected: hasGmailConnected,
       },
       databaseConnected: isDatabaseConnected(),
     };
@@ -814,9 +834,171 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
   );
 
   // ===========================================
-  // ROTAS DE COMPATIBILIDADE (legado)
-  // Serão removidas após migração do frontend
+  // ROTAS DE COMPATIBILIDADE (Settings.tsx)
   // ===========================================
+
+  // Salvar API Key Anthropic (admin only)
+  app.post<{ Body: { apiKey: string } }>(
+    '/anthropic',
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request) => {
+      const { apiKey } = request.body;
+      if (!apiKey) {
+        return { success: false, error: 'API Key é obrigatória' };
+      }
+      await saveGlobalConfigValue('anthropic.apiKey', apiKey, true);
+      return { success: true, message: 'API Key Anthropic salva' };
+    }
+  );
+
+  // Salvar credenciais Gmail (admin only)
+  app.post<{ Body: { clientId: string; clientSecret: string } }>(
+    '/gmail',
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request) => {
+      const { clientId, clientSecret } = request.body;
+      if (!clientId || !clientSecret) {
+        return { success: false, error: 'Client ID e Secret são obrigatórios' };
+      }
+      await saveGlobalConfigValue('gmail.clientId', clientId, false);
+      await saveGlobalConfigValue('gmail.clientSecret', clientSecret, true);
+      return { success: true, message: 'Credenciais Gmail salvas' };
+    }
+  );
+
+  // Salvar API Key Alchemy (admin only)
+  app.post<{ Body: { apiKey: string } }>(
+    '/alchemy',
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request) => {
+      const { apiKey } = request.body;
+      if (!apiKey) {
+        return { success: false, error: 'API Key é obrigatória' };
+      }
+      await saveGlobalConfigValue('alchemy.apiKey', apiKey, true);
+      return { success: true, message: 'API Key Alchemy salva' };
+    }
+  );
+
+  // Salvar configurações do usuário
+  app.post<{ Body: { email?: string; vipSenders?: string[]; ignoreSenders?: string[] } }>(
+    '/user',
+    { preHandler: [authMiddleware] },
+    async (request) => {
+      const userId = request.user!.id;
+      const { vipSenders, ignoreSenders } = request.body;
+
+      const updates: { vipSenders?: string[]; ignoreSenders?: string[] } = {};
+      if (vipSenders) updates.vipSenders = vipSenders;
+      if (ignoreSenders) updates.ignoreSenders = ignoreSenders;
+
+      await saveUserConfigValue(userId, updates);
+      return { success: true, message: 'Configurações salvas' };
+    }
+  );
+
+  // Salvar notificações
+  app.post<{ Body: { slackWebhookUrl?: string } }>(
+    '/notifications',
+    { preHandler: [authMiddleware] },
+    async (request) => {
+      const userId = request.user!.id;
+      const currentConfig = await loadUserConfig(userId);
+
+      const notificationConfig = {
+        ...currentConfig.notifications,
+        slackWebhookUrl: request.body.slackWebhookUrl || '',
+      };
+
+      await saveUserConfigValue(userId, { notificationConfig });
+      return { success: true, message: 'Notificações salvas' };
+    }
+  );
+
+  // Salvar config stablecoin
+  app.post<{ Body: { checkInterval?: number } }>(
+    '/stablecoin',
+    { preHandler: [authMiddleware] },
+    async (request) => {
+      const userId = request.user!.id;
+      const currentConfig = await loadUserConfig(userId);
+
+      const stablecoinAgentConfig = {
+        ...currentConfig.stablecoinAgent,
+        checkInterval: request.body.checkInterval || 60,
+      };
+
+      await saveUserConfigValue(userId, { stablecoinAgentConfig });
+      return { success: true, message: 'Configuração salva' };
+    }
+  );
+
+  // Testar Anthropic
+  app.post('/test/anthropic', { preHandler: [authMiddleware] }, async () => {
+    const globalCfg = await loadGlobalConfig();
+    if (!globalCfg.anthropic.apiKey) {
+      return { success: false, error: 'API Key não configurada' };
+    }
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': globalCfg.anthropic.apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-3-haiku-20240307',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'Hi' }],
+        }),
+      });
+
+      if (response.ok) {
+        return { success: true, message: 'Conexão OK!' };
+      } else {
+        const error = await response.json();
+        return { success: false, error: (error as { error?: { message?: string } }).error?.message || 'Erro na API' };
+      }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Erro de conexão' };
+    }
+  });
+
+  // Testar Alchemy
+  app.post('/test/alchemy', { preHandler: [authMiddleware] }, async () => {
+    const globalCfg = await loadGlobalConfig();
+    if (!globalCfg.alchemy.apiKey) {
+      return { success: false, error: 'API Key não configurada' };
+    }
+
+    try {
+      const response = await fetch(
+        `https://eth-mainnet.g.alchemy.com/v2/${globalCfg.alchemy.apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'eth_blockNumber',
+            params: [],
+            id: 1,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const blockNumber = parseInt((data as { result: string }).result, 16);
+        return { success: true, message: `Conectado! Bloco: ${blockNumber}` };
+      } else {
+        return { success: false, error: 'Erro na API' };
+      }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Erro de conexão' };
+    }
+  });
 
   // Testa conexão com banco de dados
   app.post('/test/database', async () => {
