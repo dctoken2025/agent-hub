@@ -11,6 +11,8 @@ import Financial from './pages/Financial';
 import { StablecoinMonitor } from './pages/StablecoinMonitor';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
+import { Privacy } from './pages/Privacy';
+import { Terms } from './pages/Terms';
 import AgentConfig from './pages/AgentConfig';
 import { AIUsage } from './pages/AIUsage';
 import { Users } from './pages/Users';
@@ -60,9 +62,15 @@ function AppContent() {
     );
   }
 
-  // Não autenticado - mostra login
+  // Não autenticado - mostra login ou páginas públicas
   if (!user) {
-    return <Login />;
+    return (
+      <Switch>
+        <Route path="/privacy" component={Privacy} />
+        <Route path="/terms" component={Terms} />
+        <Route component={Login} />
+      </Switch>
+    );
   }
 
   // Autenticado - mostra app

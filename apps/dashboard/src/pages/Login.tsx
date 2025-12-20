@@ -310,7 +310,11 @@ export function Login() {
               <Bot className="w-5 h-5" />
               <span>Agent Hub</span>
             </div>
-            <p>Desenvolvido com ❤️ usando Claude AI</p>
+            <div className="flex items-center gap-6">
+              <a href="/privacy" className="hover:text-white transition-colors">Política de Privacidade</a>
+              <a href="/terms" className="hover:text-white transition-colors">Termos de Serviço</a>
+            </div>
+            <p className="hidden md:block">Desenvolvido com ❤️ usando Claude AI</p>
           </div>
         </footer>
       </div>
