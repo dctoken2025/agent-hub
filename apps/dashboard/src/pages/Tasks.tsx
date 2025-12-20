@@ -163,8 +163,16 @@ export function Tasks() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const openTaskDetail = (item: ActionItem) => {
-    setSelectedItem(item);
+  const openTaskDetail = async (item: ActionItem) => {
+    try {
+      // Busca detalhes completos do item (incluindo originalText que pode não vir do dashboard)
+      const response = await apiRequest<{ item: ActionItem }>(`/tasks/items/${item.id}`);
+      setSelectedItem(response.item);
+    } catch (error) {
+      // Em caso de erro, usa os dados que já temos
+      console.error('Erro ao buscar detalhes:', error);
+      setSelectedItem(item);
+    }
   };
 
   const closeTaskDetail = () => {
