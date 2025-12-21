@@ -1,28 +1,21 @@
-# Dashboard Dockerfile - serve arquivos estáticos pré-buildados
+# Dashboard Dockerfile - simples e funcional
 FROM nginx:alpine
 
 # Copiar arquivos buildados
 COPY apps/dashboard/dist /usr/share/nginx/html
 
-# Criar diretório de templates e configuração
-RUN mkdir -p /etc/nginx/templates && \
-    echo 'server {' > /etc/nginx/templates/default.conf.template && \
-    echo '    listen ${PORT};' >> /etc/nginx/templates/default.conf.template && \
-    echo '    server_name _;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    root /usr/share/nginx/html;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    index index.html;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    location / {' >> /etc/nginx/templates/default.conf.template && \
-    echo '        try_files $$uri $$uri/ /index.html;' >> /etc/nginx/templates/default.conf.template && \
-    echo '    }' >> /etc/nginx/templates/default.conf.template && \
-    echo '    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$$ {' >> /etc/nginx/templates/default.conf.template && \
-    echo '        expires 1y;' >> /etc/nginx/templates/default.conf.template && \
-    echo '        add_header Cache-Control "public, immutable";' >> /etc/nginx/templates/default.conf.template && \
-    echo '    }' >> /etc/nginx/templates/default.conf.template && \
-    echo '}' >> /etc/nginx/templates/default.conf.template
+# Configuração nginx direta (sem template)
+RUN rm /etc/nginx/conf.d/default.conf && \
+    printf 'server {\n\
+    listen 80;\n\
+    server_name _;\n\
+    root /usr/share/nginx/html;\n\
+    index index.html;\n\
+    location / {\n\
+        try_files $uri $uri/ /index.html;\n\
+    }\n\
+}\n' > /etc/nginx/conf.d/default.conf
 
-# Remover config padrão
-RUN rm -f /etc/nginx/conf.d/default.conf
-
-ENV PORT=80
+EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
