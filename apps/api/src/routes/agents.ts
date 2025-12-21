@@ -351,6 +351,56 @@ export const agentRoutes: FastifyPluginAsync = async (app) => {
       lastRun: taskAgentLastRun,
     });
 
+    // Focus Agent - Agente de análise de foco e priorização
+    let focusAgentRunCount = 0;
+    let focusAgentLastRun: string | null = null;
+    
+    if (db) {
+      try {
+        const runCountResult = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(agentLogs)
+          .where(
+            and(
+              eq(agentLogs.userId, userId),
+              eq(agentLogs.agentId, `focus-agent-${userId}`)
+            )
+          );
+
+        const lastRunResult = await db
+          .select({ createdAt: agentLogs.createdAt })
+          .from(agentLogs)
+          .where(
+            and(
+              eq(agentLogs.userId, userId),
+              eq(agentLogs.agentId, `focus-agent-${userId}`)
+            )
+          )
+          .orderBy(desc(agentLogs.createdAt))
+          .limit(1);
+
+        focusAgentRunCount = Number(runCountResult[0]?.count) || 0;
+        focusAgentLastRun = lastRunResult[0]?.createdAt?.toISOString() || null;
+      } catch {
+        // Ignora erros
+      }
+    }
+
+    agents.push({
+      config: {
+        id: 'focus-agent',
+        name: 'Focus Agent',
+        description: 'Análise de foco e priorização inteligente de tarefas',
+        enabled: true, // Sempre habilitado (é chamado sob demanda)
+        schedule: {
+          type: 'manual',
+        },
+      },
+      status: 'stopped', // Roda sob demanda
+      runCount: focusAgentRunCount,
+      lastRun: focusAgentLastRun,
+    });
+
     return { agents };
   });
 

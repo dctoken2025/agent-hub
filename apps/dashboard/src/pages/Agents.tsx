@@ -46,7 +46,7 @@ export function Agents() {
   const { data: contextsData } = useQuery({
     queryKey: ['agent-contexts'],
     queryFn: async () => {
-      const agentIds = ['email-agent', 'legal-agent', 'financial-agent', 'stablecoin-agent', 'task-agent'];
+      const agentIds = ['email-agent', 'legal-agent', 'financial-agent', 'stablecoin-agent', 'task-agent', 'focus-agent'];
       const results = await Promise.all(
         agentIds.map(id => 
           apiRequest<{ agentId: string; hasContext: boolean }>(`/agent-teaching/context/${id}`)

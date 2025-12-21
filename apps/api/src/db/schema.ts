@@ -56,6 +56,7 @@ export const userConfigs = pgTable('user_configs', {
     financial: null,
     stablecoin: null,
     task: null,
+    focus: null,
   }),
   legalAgentConfig: jsonb('legal_agent_config').default({
     enabled: true,

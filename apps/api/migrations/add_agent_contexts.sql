@@ -7,8 +7,15 @@ ADD COLUMN IF NOT EXISTS agent_contexts jsonb DEFAULT '{
   "legal": null,
   "financial": null,
   "stablecoin": null,
-  "task": null
+  "task": null,
+  "focus": null
 }'::jsonb;
 
 COMMENT ON COLUMN user_configs.agent_contexts IS 'Contexto personalizado de cada agente, gerado pelo fluxo de ensino com IA';
+
+-- Atualiza registros existentes para incluir o campo focus se ainda não tiver
+UPDATE user_configs 
+SET agent_contexts = agent_contexts || '{"focus": null}'::jsonb
+WHERE agent_contexts IS NOT NULL 
+  AND NOT (agent_contexts ? 'focus');
 

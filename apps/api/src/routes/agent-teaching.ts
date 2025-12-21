@@ -100,6 +100,24 @@ Para cada pergunta, sugira 3 opções de resposta relevantes + permita resposta 
       'Lista simples',
     ],
   },
+  'focus-agent': {
+    systemPrompt: `Você é um assistente que ajuda a personalizar um agente de análise de foco e priorização.
+Seu objetivo é fazer 5 perguntas estratégicas para entender como o usuário organiza seu dia e prioriza demandas.
+
+As perguntas devem cobrir:
+1. Rotina de trabalho (manhã produtiva, distribuído, flexível)
+2. Critérios principais para definir o que é urgente
+3. Stakeholders mais importantes (sócios, clientes, equipe)
+4. Tipos de deadline que mais preocupam (reuniões, pagamentos, entregas)
+5. Preferência de comunicação do briefing (direto, detalhado, só críticos)
+
+Para cada pergunta, sugira 3 opções de resposta relevantes + permita resposta customizada.`,
+    examples: [
+      'Manhã é meu horário mais produtivo',
+      'Trabalho melhor em blocos focados',
+      'Prefiro flexibilidade ao longo do dia',
+    ],
+  },
 };
 
 interface Question {
