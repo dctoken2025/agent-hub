@@ -472,23 +472,44 @@ export function AIUsage() {
                       </div>
                     ) : anthropicCosts?.data ? (
                       <div className="space-y-2">
-                        <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                          ${(anthropicCosts.data.total_cost_usd || 0).toFixed(4)}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Últimos 7 dias (via Admin API)
-                        </p>
-                        {anthropicCosts.data.costs && anthropicCosts.data.costs.length > 0 && (
-                          <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-800">
-                            <p className="text-xs font-medium mb-2">Por modelo:</p>
-                            {anthropicCosts.data.costs.map((c, i) => (
-                              <div key={i} className="flex justify-between text-xs">
-                                <span className="text-muted-foreground">{c.model}</span>
-                                <span className="font-medium">${(c.cost_usd || 0).toFixed(4)}</span>
+                        {(() => {
+                          try {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const data = anthropicCosts.data as any;
+                            let totalCost = 0;
+                            
+                            // Estrutura: data[] -> results[] -> amount (string)
+                            if (Array.isArray(data)) {
+                              data.forEach((day: { results?: Array<{ amount?: string }> }) => {
+                                if (day.results && Array.isArray(day.results)) {
+                                  day.results.forEach((r) => {
+                                    if (r.amount) {
+                                      totalCost += parseFloat(r.amount) || 0;
+                                    }
+                                  });
+                                }
+                              });
+                            }
+                            
+                            return (
+                              <>
+                                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                                  ${totalCost.toFixed(2)}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Últimos 7 dias (via Admin API)
+                                </p>
+                              </>
+                            );
+                          } catch (e) {
+                            console.error('Erro ao processar custos Anthropic:', e);
+                            return (
+                              <div className="text-sm text-amber-600">
+                                Erro ao processar dados
                               </div>
-                            ))}
-                          </div>
-                        )}
+                            );
+                          }
+                        })()}
                       </div>
                     ) : !anthropicLoading && (
                       <p className="text-sm text-muted-foreground">
@@ -514,21 +535,22 @@ export function AIUsage() {
                       <div className="space-y-2">
                         {(() => {
                           try {
-                            // Calcula custo total - estrutura pode variar
+                            // Calcula custo total
                             let totalCost = 0;
                             // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             const costsData = openaiCosts.costs as any;
                             
+                            // Estrutura: data[] -> results[] -> amount.value (string)
                             if (costsData?.data && Array.isArray(costsData.data)) {
-                              totalCost = costsData.data.reduce((acc: number, bucket: { results?: Array<{ amount?: { value?: number } }> }) => {
+                              costsData.data.forEach((bucket: { results?: Array<{ amount?: { value?: string } }> }) => {
                                 if (bucket.results && Array.isArray(bucket.results)) {
-                                  const bucketTotal = bucket.results.reduce((sum: number, r) => sum + (r.amount?.value || 0), 0);
-                                  return acc + bucketTotal;
+                                  bucket.results.forEach((r) => {
+                                    if (r.amount?.value) {
+                                      totalCost += parseFloat(r.amount.value) || 0;
+                                    }
+                                  });
                                 }
-                                return acc;
-                              }, 0);
-                            } else if (typeof costsData?.total_cost === 'number') {
-                              totalCost = costsData.total_cost;
+                              });
                             }
                             
                             return (
