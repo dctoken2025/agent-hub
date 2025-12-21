@@ -1,23 +1,35 @@
-# Simple static file server for pre-built dashboard
-FROM nginx:alpine
+# Build stage
+FROM node:20-alpine AS builder
 
-# Copy pre-built files from dist
-COPY dist /usr/share/nginx/html
+WORKDIR /app
 
-# Custom nginx config for SPA routing
-RUN echo 'server { \
-    listen 80; \
-    server_name _; \
-    root /usr/share/nginx/html; \
-    index index.html; \
-    location / { \
-        try_files $uri $uri/ /index.html; \
-    } \
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ { \
-        expires 1y; \
-        add_header Cache-Control "public, immutable"; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
+# Copy package files
+COPY package*.json ./
+COPY turbo.json ./
+COPY packages ./packages
+COPY apps/dashboard ./apps/dashboard
+
+# Install dependencies
+RUN npm ci
+
+# Build args for API URL
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+
+# Build dashboard
+RUN npm run build --workspace=@agent-hub/dashboard
+
+# Production stage with nginx
+FROM nginx:alpine AS runner
+
+# Copy built files
+COPY --from=builder /app/apps/dashboard/dist /usr/share/nginx/html
+
+# Copy nginx config template - nginx:alpine automatically uses envsubst
+COPY apps/dashboard/nginx.conf.template /etc/nginx/templates/default.conf.template
+
+# Railway uses PORT env variable
+ENV PORT=80
 
 EXPOSE 80
 

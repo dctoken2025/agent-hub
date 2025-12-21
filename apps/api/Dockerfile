@@ -1,41 +1,58 @@
-# API Dockerfile - usa arquivos pré-buildados
-FROM node:20-alpine
+# Build stage
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copiar package.json da raiz e dos workspaces
-COPY package.json ./
-COPY package-lock.json ./
+# Copy root package files
+COPY package*.json ./
+COPY turbo.json ./
+COPY tsconfig.base.json ./
 
-# Copiar package.json dos packages
-COPY packages/core/package.json ./packages/core/
-COPY packages/email-agent/package.json ./packages/email-agent/
-COPY packages/legal-agent/package.json ./packages/legal-agent/
-COPY packages/financial-agent/package.json ./packages/financial-agent/
-COPY packages/task-agent/package.json ./packages/task-agent/
-COPY packages/stablecoin-agent/package.json ./packages/stablecoin-agent/
-COPY packages/focus-agent/package.json ./packages/focus-agent/
-COPY apps/api/package.json ./apps/api/
+# Copy packages
+COPY packages ./packages
 
-# Copiar dist dos packages
-COPY packages/core/dist ./packages/core/dist
-COPY packages/email-agent/dist ./packages/email-agent/dist
-COPY packages/legal-agent/dist ./packages/legal-agent/dist
-COPY packages/financial-agent/dist ./packages/financial-agent/dist
-COPY packages/task-agent/dist ./packages/task-agent/dist
-COPY packages/stablecoin-agent/dist ./packages/stablecoin-agent/dist
-COPY packages/focus-agent/dist ./packages/focus-agent/dist
-COPY apps/api/dist ./apps/api/dist
+# Copy API
+COPY apps/api ./apps/api
 
-# Instalar apenas dependências de produção
-RUN npm ci --omit=dev
+# Install dependencies
+RUN npm ci
 
-# Configuração
+# Build all packages
+RUN npm run build
+
+# Production stage
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# Copy package files for production install
+COPY package*.json ./
+COPY --from=builder /app/packages/core/package.json ./packages/core/package.json
+COPY --from=builder /app/packages/email-agent/package.json ./packages/email-agent/package.json
+COPY --from=builder /app/packages/legal-agent/package.json ./packages/legal-agent/package.json
+COPY --from=builder /app/packages/financial-agent/package.json ./packages/financial-agent/package.json
+COPY --from=builder /app/packages/task-agent/package.json ./packages/task-agent/package.json
+COPY --from=builder /app/packages/stablecoin-agent/package.json ./packages/stablecoin-agent/package.json
+COPY --from=builder /app/packages/focus-agent/package.json ./packages/focus-agent/package.json
+COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+
+# Copy built dist folders
+COPY --from=builder /app/packages/core/dist ./packages/core/dist
+COPY --from=builder /app/packages/email-agent/dist ./packages/email-agent/dist
+COPY --from=builder /app/packages/legal-agent/dist ./packages/legal-agent/dist
+COPY --from=builder /app/packages/financial-agent/dist ./packages/financial-agent/dist
+COPY --from=builder /app/packages/task-agent/dist ./packages/task-agent/dist
+COPY --from=builder /app/packages/stablecoin-agent/dist ./packages/stablecoin-agent/dist
+COPY --from=builder /app/packages/focus-agent/dist ./packages/focus-agent/dist
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+
+# Install production dependencies only
+RUN npm ci --omit=dev --workspace=@agent-hub/api --workspace=@agent-hub/core --workspace=@agent-hub/email-agent --workspace=@agent-hub/legal-agent --workspace=@agent-hub/financial-agent --workspace=@agent-hub/task-agent --workspace=@agent-hub/stablecoin-agent --workspace=@agent-hub/focus-agent
+
+# Set environment
 ENV NODE_ENV=production
-ENV PORT=3001
-
-EXPOSE 3001
 
 WORKDIR /app/apps/api
 
+# Start the API
 CMD ["node", "dist/index.js"]
