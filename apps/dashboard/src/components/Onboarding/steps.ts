@@ -62,8 +62,8 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
     description: 'Aqui você pode ajustar intervalos de execução, regras de classificação, palavras-chave e outras preferências de cada agente.',
     targetSelector: '[data-onboarding="config-section"]',
     targetPage: '/agent-config',
-    position: 'top',
-    highlight: true,
+    position: 'center',
+    highlight: false,
   },
   {
     id: 'focus-briefing',
