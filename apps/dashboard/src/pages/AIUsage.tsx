@@ -125,7 +125,10 @@ function parseAnthropicCosts(data: unknown): { total: number; byKey: Record<stri
   const result = { total: 0, byKey: {} as Record<string, number> };
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const arr = data as any;
+    const raw = data as any;
+    // A estrutura pode ser { data: [...] } ou diretamente [...]
+    const arr = Array.isArray(raw) ? raw : (raw?.data || []);
+    
     if (Array.isArray(arr)) {
       arr.forEach((day: { results?: Array<{ amount?: string; api_key_id?: string }> }) => {
         if (day.results && Array.isArray(day.results)) {
@@ -150,15 +153,20 @@ function parseOpenAICosts(data: unknown): { total: number; byKey: Record<string,
   const result = { total: 0, byKey: {} as Record<string, number> };
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const costsData = data as any;
-    if (costsData?.data && Array.isArray(costsData.data)) {
-      costsData.data.forEach((bucket: { results?: Array<{ amount?: { value?: string }; object_id?: string }> }) => {
+    const raw = data as any;
+    // A estrutura pode ser { data: [...] } ou diretamente ter data dentro
+    const arr = raw?.data || [];
+    
+    if (Array.isArray(arr)) {
+      arr.forEach((bucket: { results?: Array<{ amount?: { value?: string }; object_id?: string; api_key_id?: string }> }) => {
         if (bucket.results && Array.isArray(bucket.results)) {
           bucket.results.forEach((r) => {
             const cost = parseFloat(r.amount?.value || '0') || 0;
             result.total += cost;
-            if (r.object_id) {
-              result.byKey[r.object_id] = (result.byKey[r.object_id] || 0) + cost;
+            // OpenAI pode usar object_id ou api_key_id
+            const keyId = r.api_key_id || r.object_id;
+            if (keyId) {
+              result.byKey[keyId] = (result.byKey[keyId] || 0) + cost;
             }
           });
         }
