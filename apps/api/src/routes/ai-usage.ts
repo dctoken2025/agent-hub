@@ -218,7 +218,8 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 7);
 
-      const response = await fetch(
+      // Busca custos totais
+      const totalResponse = await fetch(
         `https://api.anthropic.com/v1/organizations/cost_report?` + 
         `starting_at=${startDate.toISOString().split('T')[0]}&` +
         `ending_at=${endDate.toISOString().split('T')[0]}`,
@@ -231,18 +232,60 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
         }
       );
 
-      if (!response.ok) {
-        const errorData = await response.json() as { error?: { message?: string } };
+      if (!totalResponse.ok) {
+        const errorData = await totalResponse.json() as { error?: { message?: string } };
         return { 
-          error: errorData.error?.message || `Erro ${response.status}`,
+          error: errorData.error?.message || `Erro ${totalResponse.status}`,
           data: null,
         };
       }
 
-      const data = await response.json();
-      console.log('[AIUsage] Anthropic response:', JSON.stringify(data, null, 2));
+      const totalData = await totalResponse.json();
+
+      // Busca custos agrupados por API Key
+      const byKeyResponse = await fetch(
+        `https://api.anthropic.com/v1/organizations/cost_report?` + 
+        `starting_at=${startDate.toISOString().split('T')[0]}&` +
+        `ending_at=${endDate.toISOString().split('T')[0]}&` +
+        `group_by[]=api_key_id`,
+        {
+          method: 'GET',
+          headers: {
+            'x-api-key': adminApiKey,
+            'anthropic-version': '2023-06-01',
+          },
+        }
+      );
+
+      let byApiKey = null;
+      if (byKeyResponse.ok) {
+        byApiKey = await byKeyResponse.json();
+        console.log('[AIUsage] Anthropic by API key:', JSON.stringify(byApiKey, null, 2));
+      }
+
+      // Também busca lista de API keys para ter os nomes
+      const keysResponse = await fetch(
+        `https://api.anthropic.com/v1/organizations/api_keys`,
+        {
+          method: 'GET',
+          headers: {
+            'x-api-key': adminApiKey,
+            'anthropic-version': '2023-06-01',
+          },
+        }
+      );
+
+      let apiKeys = null;
+      if (keysResponse.ok) {
+        apiKeys = await keysResponse.json();
+        console.log('[AIUsage] Anthropic API keys:', JSON.stringify(apiKeys, null, 2));
+      }
+
+      console.log('[AIUsage] Anthropic total response:', JSON.stringify(totalData, null, 2));
       return { 
-        data,
+        data: totalData,
+        byApiKey,
+        apiKeys,
         period: {
           start: startDate.toISOString(),
           end: endDate.toISOString(),
@@ -276,6 +319,7 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 7);
 
+      // Busca custos totais por projeto
       const response = await fetch(
         `https://api.openai.com/v1/organization/costs?` +
         `start_time=${Math.floor(startDate.getTime() / 1000)}&` +
@@ -301,7 +345,46 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
       const costData = await response.json();
       console.log('[AIUsage] OpenAI costs response:', JSON.stringify(costData, null, 2));
 
-      // Também busca uso de tokens
+      // Busca custos por API Key
+      const byKeyResponse = await fetch(
+        `https://api.openai.com/v1/organization/costs?` +
+        `start_time=${Math.floor(startDate.getTime() / 1000)}&` +
+        `end_time=${Math.floor(endDate.getTime() / 1000)}&` +
+        `group_by=api_key_id`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${adminApiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      let byApiKey = null;
+      if (byKeyResponse.ok) {
+        byApiKey = await byKeyResponse.json();
+        console.log('[AIUsage] OpenAI costs by API key:', JSON.stringify(byApiKey, null, 2));
+      }
+
+      // Busca lista de API keys para ter os nomes
+      const keysResponse = await fetch(
+        `https://api.openai.com/v1/organization/api_keys`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${adminApiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      let apiKeys = null;
+      if (keysResponse.ok) {
+        apiKeys = await keysResponse.json();
+        console.log('[AIUsage] OpenAI API keys:', JSON.stringify(apiKeys, null, 2));
+      }
+
+      // Também busca uso de tokens por modelo
       const usageResponse = await fetch(
         `https://api.openai.com/v1/organization/usage/completions?` +
         `start_time=${Math.floor(startDate.getTime() / 1000)}&` +
@@ -323,6 +406,8 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
 
       return { 
         costs: costData,
+        byApiKey,
+        apiKeys,
         usage: usageData,
         period: {
           start: startDate.toISOString(),

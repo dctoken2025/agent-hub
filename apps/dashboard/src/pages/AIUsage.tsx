@@ -93,14 +93,13 @@ interface AIConfig {
 
 // Resposta da Admin API da Anthropic
 interface AnthropicCostReport {
-  data?: {
-    costs?: Array<{
-      model?: string;
-      cost_usd?: number;
-      input_tokens?: number;
-      output_tokens?: number;
+  data?: unknown; // Estrutura: data[] -> results[] -> amount (string)
+  byApiKey?: unknown; // Custos agrupados por API key
+  apiKeys?: {
+    data?: Array<{
+      id: string;
+      name: string;
     }>;
-    total_cost_usd?: number;
   };
   error?: string;
   period?: { start: string; end: string };
@@ -108,23 +107,67 @@ interface AnthropicCostReport {
 
 // Resposta da Admin API da OpenAI
 interface OpenAICostReport {
-  costs?: {
+  costs?: unknown; // Estrutura: data[] -> results[] -> amount.value (string)
+  byApiKey?: unknown; // Custos agrupados por API key
+  apiKeys?: {
     data?: Array<{
-      results?: Array<{
-        amount?: { value?: number };
-      }>;
+      id: string;
+      name: string;
     }>;
   };
-  usage?: {
-    data?: Array<{
-      results?: Array<{
-        input_tokens?: number;
-        output_tokens?: number;
-      }>;
-    }>;
-  };
+  usage?: unknown;
   error?: string;
   period?: { start: string; end: string };
+}
+
+// Helper para parsear custos da Anthropic
+function parseAnthropicCosts(data: unknown): { total: number; byKey: Record<string, number> } {
+  const result = { total: 0, byKey: {} as Record<string, number> };
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const arr = data as any;
+    if (Array.isArray(arr)) {
+      arr.forEach((day: { results?: Array<{ amount?: string; api_key_id?: string }> }) => {
+        if (day.results && Array.isArray(day.results)) {
+          day.results.forEach((r) => {
+            const cost = parseFloat(r.amount || '0') || 0;
+            result.total += cost;
+            if (r.api_key_id) {
+              result.byKey[r.api_key_id] = (result.byKey[r.api_key_id] || 0) + cost;
+            }
+          });
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Erro ao parsear custos Anthropic:', e);
+  }
+  return result;
+}
+
+// Helper para parsear custos da OpenAI
+function parseOpenAICosts(data: unknown): { total: number; byKey: Record<string, number> } {
+  const result = { total: 0, byKey: {} as Record<string, number> };
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const costsData = data as any;
+    if (costsData?.data && Array.isArray(costsData.data)) {
+      costsData.data.forEach((bucket: { results?: Array<{ amount?: { value?: string }; object_id?: string }> }) => {
+        if (bucket.results && Array.isArray(bucket.results)) {
+          bucket.results.forEach((r) => {
+            const cost = parseFloat(r.amount?.value || '0') || 0;
+            result.total += cost;
+            if (r.object_id) {
+              result.byKey[r.object_id] = (result.byKey[r.object_id] || 0) + cost;
+            }
+          });
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Erro ao parsear custos OpenAI:', e);
+  }
+  return result;
 }
 
 export function AIUsage() {
@@ -473,42 +516,17 @@ export function AIUsage() {
                     ) : anthropicCosts?.data ? (
                       <div className="space-y-2">
                         {(() => {
-                          try {
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            const data = anthropicCosts.data as any;
-                            let totalCost = 0;
-                            
-                            // Estrutura: data[] -> results[] -> amount (string)
-                            if (Array.isArray(data)) {
-                              data.forEach((day: { results?: Array<{ amount?: string }> }) => {
-                                if (day.results && Array.isArray(day.results)) {
-                                  day.results.forEach((r) => {
-                                    if (r.amount) {
-                                      totalCost += parseFloat(r.amount) || 0;
-                                    }
-                                  });
-                                }
-                              });
-                            }
-                            
-                            return (
-                              <>
-                                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                                  ${totalCost.toFixed(2)}
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                  Últimos 7 dias (via Admin API)
-                                </p>
-                              </>
-                            );
-                          } catch (e) {
-                            console.error('Erro ao processar custos Anthropic:', e);
-                            return (
-                              <div className="text-sm text-amber-600">
-                                Erro ao processar dados
+                          const parsed = parseAnthropicCosts(anthropicCosts.data);
+                          return (
+                            <>
+                              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                                ${parsed.total.toFixed(2)}
                               </div>
-                            );
-                          }
+                              <p className="text-xs text-muted-foreground">
+                                Últimos 7 dias (via Admin API)
+                              </p>
+                            </>
+                          );
                         })()}
                       </div>
                     ) : !anthropicLoading && (
@@ -534,43 +552,17 @@ export function AIUsage() {
                     ) : openaiCosts?.costs ? (
                       <div className="space-y-2">
                         {(() => {
-                          try {
-                            // Calcula custo total
-                            let totalCost = 0;
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            const costsData = openaiCosts.costs as any;
-                            
-                            // Estrutura: data[] -> results[] -> amount.value (string)
-                            if (costsData?.data && Array.isArray(costsData.data)) {
-                              costsData.data.forEach((bucket: { results?: Array<{ amount?: { value?: string } }> }) => {
-                                if (bucket.results && Array.isArray(bucket.results)) {
-                                  bucket.results.forEach((r) => {
-                                    if (r.amount?.value) {
-                                      totalCost += parseFloat(r.amount.value) || 0;
-                                    }
-                                  });
-                                }
-                              });
-                            }
-                            
-                            return (
-                              <>
-                                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                                  ${totalCost.toFixed(4)}
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                  Últimos 7 dias (via Admin API)
-                                </p>
-                              </>
-                            );
-                          } catch (e) {
-                            console.error('Erro ao processar custos OpenAI:', e);
-                            return (
-                              <div className="text-sm text-amber-600">
-                                Erro ao processar dados
+                          const parsed = parseOpenAICosts(openaiCosts.costs);
+                          return (
+                            <>
+                              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                ${parsed.total.toFixed(4)}
                               </div>
-                            );
-                          }
+                              <p className="text-xs text-muted-foreground">
+                                Últimos 7 dias (via Admin API)
+                              </p>
+                            </>
+                          );
                         })()}
                       </div>
                     ) : !openaiLoading && (
@@ -585,6 +577,137 @@ export function AIUsage() {
                   💡 Os custos acima são obtidos diretamente das APIs oficiais dos providers
                 </p>
               </div>
+
+              {/* Custos por API Key */}
+              {(anthropicCosts?.byApiKey !== undefined || openaiCosts?.byApiKey !== undefined) && (
+                <div className="bg-card rounded-lg border p-4">
+                  <h3 className="font-semibold mb-4 flex items-center gap-2">
+                    🔑 Custos por API Key
+                  </h3>
+                  
+                  <div className="space-y-6">
+                    {/* Anthropic API Keys */}
+                    {anthropicCosts?.byApiKey !== undefined && (
+                      <div>
+                        <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                          <span>🟣</span> Anthropic
+                        </h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-2 font-medium">API Key</th>
+                                <th className="text-right py-2 font-medium">Custo (USD)</th>
+                                <th className="text-right py-2 font-medium">%</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(() => {
+                                const parsed = parseAnthropicCosts(anthropicCosts.byApiKey);
+                                const keyNames = anthropicCosts.apiKeys?.data || [];
+                                const entries = Object.entries(parsed.byKey).sort((a, b) => b[1] - a[1]);
+                                
+                                if (entries.length === 0) {
+                                  return (
+                                    <tr>
+                                      <td colSpan={3} className="py-4 text-center text-muted-foreground">
+                                        Nenhum custo por API key encontrado
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+                                
+                                return entries.map(([keyId, cost]) => {
+                                  const keyInfo = keyNames.find(k => k.id === keyId);
+                                  const percentage = parsed.total > 0 ? (cost / parsed.total * 100) : 0;
+                                  return (
+                                    <tr key={keyId} className="border-b last:border-0">
+                                      <td className="py-2">
+                                        <div>
+                                          <span className="font-medium">{keyInfo?.name || 'API Key'}</span>
+                                          <span className="text-xs text-muted-foreground ml-2">
+                                            ...{keyId.slice(-8)}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="text-right py-2 font-medium text-purple-600 dark:text-purple-400">
+                                        ${cost.toFixed(2)}
+                                      </td>
+                                      <td className="text-right py-2 text-muted-foreground">
+                                        {percentage.toFixed(1)}%
+                                      </td>
+                                    </tr>
+                                  );
+                                });
+                              })()}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* OpenAI API Keys */}
+                    {openaiCosts?.byApiKey !== undefined && (
+                      <div>
+                        <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                          <span>🟢</span> OpenAI
+                        </h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-2 font-medium">API Key</th>
+                                <th className="text-right py-2 font-medium">Custo (USD)</th>
+                                <th className="text-right py-2 font-medium">%</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(() => {
+                                const parsed = parseOpenAICosts(openaiCosts.byApiKey);
+                                const keyNames = openaiCosts.apiKeys?.data || [];
+                                const entries = Object.entries(parsed.byKey).sort((a, b) => b[1] - a[1]);
+                                
+                                if (entries.length === 0) {
+                                  return (
+                                    <tr>
+                                      <td colSpan={3} className="py-4 text-center text-muted-foreground">
+                                        Nenhum custo por API key encontrado
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+                                
+                                return entries.map(([keyId, cost]) => {
+                                  const keyInfo = keyNames.find(k => k.id === keyId);
+                                  const percentage = parsed.total > 0 ? (cost / parsed.total * 100) : 0;
+                                  return (
+                                    <tr key={keyId} className="border-b last:border-0">
+                                      <td className="py-2">
+                                        <div>
+                                          <span className="font-medium">{keyInfo?.name || 'API Key'}</span>
+                                          <span className="text-xs text-muted-foreground ml-2">
+                                            ...{keyId.slice(-8)}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="text-right py-2 font-medium text-green-600 dark:text-green-400">
+                                        ${cost.toFixed(4)}
+                                      </td>
+                                      <td className="text-right py-2 text-muted-foreground">
+                                        {percentage.toFixed(1)}%
+                                      </td>
+                                    </tr>
+                                  );
+                                });
+                              })()}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <div className="bg-card rounded-lg border p-8 text-center">
