@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Target,
   RefreshCw,
@@ -15,9 +15,180 @@ import {
   Sparkles,
   TrendingUp,
   Zap,
+  Brain,
+  Search,
+  ListChecks,
+  BarChart3,
 } from 'lucide-react';
 import { apiRequest } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+
+// Componente de Loading Interativo
+function InteractiveLoading() {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [tipIndex, setTipIndex] = useState(0);
+
+  const steps = [
+    { icon: Search, text: 'Buscando seus dados...', color: 'text-blue-500' },
+    { icon: Mail, text: 'Analisando emails...', color: 'text-cyan-500' },
+    { icon: ListChecks, text: 'Verificando tarefas...', color: 'text-emerald-500' },
+    { icon: DollarSign, text: 'Processando financeiro...', color: 'text-amber-500' },
+    { icon: Brain, text: 'IA priorizando itens...', color: 'text-violet-500' },
+    { icon: BarChart3, text: 'Gerando briefing...', color: 'text-purple-500' },
+  ];
+
+  const tips = [
+    '💡 O Foco analisa todos os seus dados para criar um briefing personalizado',
+    '⚡ Itens urgentes aparecem primeiro, ordenados por prioridade',
+    '🎯 A IA considera prazos, valores e contatos VIP na priorização',
+    '📊 Cada análise leva em conta emails, tarefas e pendências financeiras',
+    '🔄 Você pode atualizar o briefing a qualquer momento',
+  ];
+
+  useEffect(() => {
+    // Avança as etapas progressivamente
+    const stepInterval = setInterval(() => {
+      setCurrentStep((prev) => {
+        if (prev < steps.length - 1) return prev + 1;
+        return prev;
+      });
+    }, 2500);
+
+    // Atualiza o progresso suavemente
+    const progressInterval = setInterval(() => {
+      setProgress((prev) => {
+        const target = ((currentStep + 1) / steps.length) * 100;
+        const increment = (target - prev) * 0.1;
+        if (Math.abs(target - prev) < 1) return target;
+        return prev + increment;
+      });
+    }, 100);
+
+    // Troca as dicas
+    const tipInterval = setInterval(() => {
+      setTipIndex((prev) => (prev + 1) % tips.length);
+    }, 4000);
+
+    return () => {
+      clearInterval(stepInterval);
+      clearInterval(progressInterval);
+      clearInterval(tipInterval);
+    };
+  }, [currentStep, steps.length, tips.length]);
+
+  const CurrentIcon = steps[currentStep].icon;
+
+  return (
+    <div className="py-12">
+      <div className="max-w-md mx-auto">
+        {/* Card principal */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/5 via-purple-500/5 to-fuchsia-500/5 border border-violet-500/20 p-8">
+          {/* Efeito de fundo animado */}
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-violet-500/10 to-transparent rounded-full blur-3xl animate-pulse" />
+            <div className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-to-tl from-purple-500/10 to-transparent rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+          </div>
+
+          <div className="relative space-y-6">
+            {/* Ícone central animado */}
+            <div className="flex justify-center">
+              <div className="relative">
+                {/* Círculos de fundo animados */}
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 blur-xl opacity-30 animate-pulse scale-150" />
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 opacity-20 animate-ping" />
+                
+                {/* Container do ícone */}
+                <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
+                  <CurrentIcon className="h-10 w-10 text-white animate-pulse" />
+                </div>
+                
+                {/* Sparkles decorativos */}
+                <Sparkles className="absolute -top-2 -right-2 h-6 w-6 text-violet-400 animate-bounce" style={{ animationDelay: '0.5s' }} />
+                <Sparkles className="absolute -bottom-1 -left-3 h-5 w-5 text-purple-400 animate-bounce" style={{ animationDelay: '1s' }} />
+              </div>
+            </div>
+
+            {/* Texto da etapa atual */}
+            <div className="text-center">
+              <p className={cn(
+                "text-lg font-semibold transition-all duration-500",
+                steps[currentStep].color
+              )}>
+                {steps[currentStep].text}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                A IA está processando seus dados
+              </p>
+            </div>
+
+            {/* Barra de progresso */}
+            <div className="space-y-2">
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 rounded-full transition-all duration-500 ease-out relative"
+                  style={{ width: `${progress}%` }}
+                >
+                  {/* Efeito de brilho na barra */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+                </div>
+              </div>
+              <p className="text-xs text-center text-muted-foreground">
+                Etapa {currentStep + 1} de {steps.length}
+              </p>
+            </div>
+
+            {/* Indicadores das etapas */}
+            <div className="flex justify-center gap-2">
+              {steps.map((step, index) => {
+                const StepIcon = step.icon;
+                return (
+                  <div
+                    key={index}
+                    className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300",
+                      index < currentStep 
+                        ? "bg-violet-500 text-white" 
+                        : index === currentStep 
+                          ? "bg-violet-500/20 text-violet-500 ring-2 ring-violet-500 ring-offset-2 ring-offset-background" 
+                          : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {index < currentStep ? (
+                      <CheckSquare className="h-4 w-4" />
+                    ) : (
+                      <StepIcon className="h-4 w-4" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Dica rotativa */}
+        <div className="mt-6 text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-muted/50 rounded-full text-sm text-muted-foreground transition-all duration-500">
+            <span className="transition-opacity duration-500">
+              {tips[tipIndex]}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Estilos CSS para animação shimmer */}
+      <style>{`
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        .animate-shimmer {
+          animation: shimmer 1.5s infinite;
+        }
+      `}</style>
+    </div>
+  );
+}
 
 // Tipos
 interface FocusItem {
@@ -142,16 +313,7 @@ export function Focus() {
       </div>
 
       {/* Loading State */}
-      {isLoading && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <div className="relative">
-            <div className="absolute inset-0 bg-gradient-to-r from-violet-500 to-purple-600 rounded-full blur-xl opacity-20 animate-pulse" />
-            <Sparkles className="h-12 w-12 animate-pulse relative" />
-          </div>
-          <p className="mt-4 font-medium">Analisando suas prioridades...</p>
-          <p className="text-sm">A IA está processando seus dados</p>
-        </div>
-      )}
+      {isLoading && <InteractiveLoading />}
 
       {/* Error State */}
       {error && (
