@@ -488,15 +488,34 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
 function getAgentName(agentId: string | null): string {
   if (!agentId) return 'Desconhecido';
   
-  // Remove sufixo de userId (ex: email-agent-uuid -> Email Agent)
-  const baseId = agentId.split('-').slice(0, -1).join('-') || agentId;
+  // Mapeamento de prefixos conhecidos para nomes amigáveis
+  const agentPrefixes: Array<{ prefix: string; name: string }> = [
+    { prefix: 'email-agent', name: 'Email Agent' },
+    { prefix: 'legal-agent', name: 'Legal Agent' },
+    { prefix: 'financial-agent', name: 'Financial Agent' },
+    { prefix: 'stablecoin-agent', name: 'Stablecoin Agent' },
+    { prefix: 'task-agent', name: 'Task Agent' },
+    { prefix: 'focus-agent', name: 'Focus Agent' },
+  ];
   
-  const names: Record<string, string> = {
-    'email-agent': 'Email Agent',
-    'legal-agent': 'Legal Agent',
-    'financial-agent': 'Financial Agent',
-    'stablecoin-agent': 'Stablecoin Agent',
-  };
+  // Verifica se o agentId começa com algum prefixo conhecido
+  for (const { prefix, name } of agentPrefixes) {
+    if (agentId.startsWith(prefix)) {
+      return name;
+    }
+  }
   
-  return names[baseId] || agentId;
+  // Fallback: tenta formatar o ID de forma legível
+  // email-agent-uuid -> Email Agent
+  const parts = agentId.split('-');
+  if (parts.length >= 2) {
+    // Pega os primeiros 2 segmentos (ex: "email" e "agent")
+    const baseParts = parts.slice(0, 2);
+    return baseParts
+      .map(p => p.charAt(0).toUpperCase() + p.slice(1))
+      .join(' ');
+  }
+  
+  return agentId;
 }
+
