@@ -70,10 +70,21 @@ export const aiUsageRoutes = async (app) => {
                 .where(gte(aiUsageLogs.createdAt, since))
                 .groupBy(aiUsageLogs.userId, users.email)
                 .orderBy(sql `sum(${aiUsageLogs.estimatedCost}) desc`);
-            // Por agente
+            // Por agente (agrupa por tipo de agente, não por ID único)
+            // Extrai o tipo do agente: "email-agent-uuid" -> "email-agent"
             const byAgent = await db
                 .select({
-                agentId: aiUsageLogs.agentId,
+                agentId: sql `
+            CASE 
+              WHEN ${aiUsageLogs.agentId} LIKE 'email-agent%' THEN 'email-agent'
+              WHEN ${aiUsageLogs.agentId} LIKE 'legal-agent%' THEN 'legal-agent'
+              WHEN ${aiUsageLogs.agentId} LIKE 'financial-agent%' THEN 'financial-agent'
+              WHEN ${aiUsageLogs.agentId} LIKE 'task-agent%' THEN 'task-agent'
+              WHEN ${aiUsageLogs.agentId} LIKE 'focus-agent%' THEN 'focus-agent'
+              WHEN ${aiUsageLogs.agentId} LIKE 'stablecoin-agent%' THEN 'stablecoin-agent'
+              ELSE COALESCE(${aiUsageLogs.agentId}, 'unknown')
+            END
+          `,
                 calls: sql `count(*)::int`,
                 inputTokens: sql `coalesce(sum(${aiUsageLogs.inputTokens}), 0)::int`,
                 outputTokens: sql `coalesce(sum(${aiUsageLogs.outputTokens}), 0)::int`,
@@ -81,7 +92,17 @@ export const aiUsageRoutes = async (app) => {
             })
                 .from(aiUsageLogs)
                 .where(gte(aiUsageLogs.createdAt, since))
-                .groupBy(aiUsageLogs.agentId)
+                .groupBy(sql `
+          CASE 
+            WHEN ${aiUsageLogs.agentId} LIKE 'email-agent%' THEN 'email-agent'
+            WHEN ${aiUsageLogs.agentId} LIKE 'legal-agent%' THEN 'legal-agent'
+            WHEN ${aiUsageLogs.agentId} LIKE 'financial-agent%' THEN 'financial-agent'
+            WHEN ${aiUsageLogs.agentId} LIKE 'task-agent%' THEN 'task-agent'
+            WHEN ${aiUsageLogs.agentId} LIKE 'focus-agent%' THEN 'focus-agent'
+            WHEN ${aiUsageLogs.agentId} LIKE 'stablecoin-agent%' THEN 'stablecoin-agent'
+            ELSE COALESCE(${aiUsageLogs.agentId}, 'unknown')
+          END
+        `)
                 .orderBy(sql `sum(${aiUsageLogs.estimatedCost}) desc`);
             // Por dia (para gráfico)
             const byDay = await db
@@ -199,9 +220,9 @@ export const aiUsageRoutes = async (app) => {
             const endDate = new Date();
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - 7);
-            // Busca dados de uso (tokens) - que é mais confiável que cost_report
-            // cost_report pode incluir workbench, Claude Code, etc.
-            const totalResponse = await fetch(`https://api.anthropic.com/v1/organizations/usage?` +
+            // Busca relatório de custos
+            // Nota: cost_report inclui todos os custos (API, workbench, Claude Code, etc.)
+            const totalResponse = await fetch(`https://api.anthropic.com/v1/organizations/cost_report?` +
                 `starting_at=${startDate.toISOString().split('T')[0]}&` +
                 `ending_at=${endDate.toISOString().split('T')[0]}`, {
                 method: 'GET',
