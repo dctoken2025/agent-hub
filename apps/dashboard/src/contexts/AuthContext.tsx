@@ -130,6 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({}), // Body vazio requerido pelo Fastify
       });
 
       if (response.ok) {
