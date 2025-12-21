@@ -218,9 +218,10 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 7);
 
-      // Busca custos totais
+      // Busca dados de uso (tokens) - que é mais confiável que cost_report
+      // cost_report pode incluir workbench, Claude Code, etc.
       const totalResponse = await fetch(
-        `https://api.anthropic.com/v1/organizations/cost_report?` + 
+        `https://api.anthropic.com/v1/organizations/usage?` + 
         `starting_at=${startDate.toISOString().split('T')[0]}&` +
         `ending_at=${endDate.toISOString().split('T')[0]}`,
         {

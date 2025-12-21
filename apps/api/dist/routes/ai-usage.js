@@ -199,8 +199,9 @@ export const aiUsageRoutes = async (app) => {
             const endDate = new Date();
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - 7);
-            // Busca custos totais
-            const totalResponse = await fetch(`https://api.anthropic.com/v1/organizations/cost_report?` +
+            // Busca dados de uso (tokens) - que é mais confiável que cost_report
+            // cost_report pode incluir workbench, Claude Code, etc.
+            const totalResponse = await fetch(`https://api.anthropic.com/v1/organizations/usage?` +
                 `starting_at=${startDate.toISOString().split('T')[0]}&` +
                 `ending_at=${endDate.toISOString().split('T')[0]}`, {
                 method: 'GET',
