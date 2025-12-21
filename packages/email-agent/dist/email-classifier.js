@@ -1,0 +1,433 @@
+import { getAIClient } from '@agent-hub/core';
+import { EmailClassificationSchema } from './types.js';
+/**
+ * Classificador de emails usando Claude AI.
+ * Analisa conteúdo, tom e contexto para determinar prioridade.
+ */
+export class EmailClassifier {
+    config;
+    customRules = [];
+    constructor(config) {
+        this.config = config;
+    }
+    /**
+     * Define regras de classificação personalizadas.
+     */
+    setCustomRules(rules) {
+        this.customRules = rules.filter(r => r.enabled);
+        console.log(`[EmailClassifier] ${this.customRules.length} regras personalizadas ativas`);
+    }
+    /**
+     * Classifica um email usando IA.
+     */
+    async classify(email) {
+        // Primeiro: verificar regras personalizadas do usuário
+        const customRuleMatch = this.applyCustomRules(email);
+        if (customRuleMatch) {
+            console.log(`[EmailClassifier] Regra personalizada aplicada: ${customRuleMatch.reasoning}`);
+            return customRuleMatch;
+        }
+        // Verificações rápidas antes de usar IA
+        const quickCheck = this.quickClassify(email);
+        if (quickCheck) {
+            return quickCheck;
+        }
+        // Usa Claude para classificação detalhada
+        const aiClient = getAIClient();
+        const emailContext = this.buildEmailContext(email);
+        const result = await aiClient.analyze(emailContext, this.buildSystemPrompt() + '\n\nAnalise este email e classifique-o conforme as instruções.', EmailClassificationSchema);
+        if (result) {
+            return result;
+        }
+        // Fallback se IA falhar
+        return this.defaultClassification(email);
+    }
+    /**
+     * Aplica regras de classificação personalizadas do usuário.
+     */
+    applyCustomRules(email) {
+        if (this.customRules.length === 0)
+            return null;
+        const fromEmail = email.from.email.toLowerCase();
+        const subject = email.subject.toLowerCase();
+        const body = email.body.toLowerCase();
+        for (const rule of this.customRules) {
+            let textToCheck;
+            switch (rule.condition.field) {
+                case 'subject':
+                    textToCheck = subject;
+                    break;
+                case 'body':
+                    textToCheck = body;
+                    break;
+                case 'from':
+                    textToCheck = fromEmail;
+                    break;
+                case 'all':
+                default:
+                    textToCheck = `${subject} ${body} ${fromEmail}`;
+            }
+            const searchValue = rule.condition.caseSensitive
+                ? rule.condition.value
+                : rule.condition.value.toLowerCase();
+            let matches = false;
+            switch (rule.condition.operator) {
+                case 'contains':
+                    matches = textToCheck.includes(searchValue);
+                    break;
+                case 'startsWith':
+                    matches = textToCheck.startsWith(searchValue);
+                    break;
+                case 'endsWith':
+                    matches = textToCheck.endsWith(searchValue);
+                    break;
+                case 'equals':
+                    matches = textToCheck === searchValue;
+                    break;
+                case 'regex':
+                    try {
+                        const regex = new RegExp(rule.condition.value, rule.condition.caseSensitive ? '' : 'i');
+                        matches = regex.test(textToCheck);
+                    }
+                    catch {
+                        console.warn(`[EmailClassifier] Regex inválida na regra ${rule.id}: ${rule.condition.value}`);
+                    }
+                    break;
+            }
+            if (matches) {
+                // Mapear prioridade para action
+                const actionMap = {
+                    urgent: 'respond_now',
+                    attention: 'respond_later',
+                    informative: 'read_only',
+                    low: 'mark_read',
+                    cc_only: 'read_only',
+                };
+                return {
+                    priority: rule.action.priority,
+                    action: actionMap[rule.action.priority] || 'read_only',
+                    confidence: 95,
+                    reasoning: rule.action.reasoning || `Regra personalizada: ${rule.name}`,
+                    tags: rule.action.tags || [],
+                    sentiment: 'neutral',
+                    isDirectedToMe: true,
+                    requiresAction: rule.action.requiresAction ?? (rule.action.priority === 'urgent'),
+                };
+            }
+        }
+        return null;
+    }
+    /**
+     * Classificação rápida sem IA para casos óbvios.
+     */
+    quickClassify(email) {
+        const fromEmail = email.from.email.toLowerCase();
+        const subject = email.subject.toLowerCase();
+        const body = email.body.toLowerCase();
+        const content = `${subject} ${body} ${fromEmail}`;
+        // ===========================================
+        // PRIORIDADE MÁXIMA: Documentos para assinar
+        // ===========================================
+        const signaturePortals = [
+            'docusign', 'clicksign', 'd4sign', 'autentique', 'zapsign',
+            'adobe sign', 'hellosign', 'pandadoc', 'signaturit', 'certisign',
+            'valid certificadora', 'assinatura digital', 'assinatura eletrônica',
+            'documento para assinar', 'aguardando sua assinatura',
+            'pending signature', 'sign document', 'please sign',
+            'assine o documento', 'assinar contrato', 'assinatura pendente'
+        ];
+        if (signaturePortals.some(portal => content.includes(portal))) {
+            return {
+                priority: 'urgent',
+                action: 'respond_now',
+                confidence: 98,
+                reasoning: 'Documento aguardando assinatura - requer ação imediata',
+                tags: ['assinatura', 'documento', 'contrato'],
+                sentiment: 'urgent',
+                isDirectedToMe: true,
+                requiresAction: true,
+                deadline: 'hoje',
+            };
+        }
+        // ===========================================
+        // Remetente VIP = sempre alta prioridade
+        // ===========================================
+        if (this.config.vipSenders.some(vip => fromEmail.includes(vip.toLowerCase()))) {
+            return {
+                priority: 'urgent',
+                action: 'respond_now',
+                confidence: 95,
+                reasoning: 'Remetente VIP configurado',
+                tags: ['vip'],
+                sentiment: 'neutral',
+                isDirectedToMe: true,
+                requiresAction: true,
+            };
+        }
+        // ===========================================
+        // Remetente ignorado = baixa prioridade
+        // ===========================================
+        if (this.config.ignoreSenders.some(ignore => fromEmail.includes(ignore.toLowerCase()))) {
+            return {
+                priority: 'low',
+                action: 'mark_read',
+                confidence: 95,
+                reasoning: 'Remetente na lista de ignorados',
+                tags: ['ignored'],
+                sentiment: 'neutral',
+                isDirectedToMe: false,
+                requiresAction: false,
+            };
+        }
+        // ===========================================
+        // Usuário está apenas em CC
+        // ===========================================
+        const isInCC = email.cc?.some(cc => cc.email.toLowerCase() === this.config.userEmail.toLowerCase());
+        const isInTo = email.to.some(to => to.email.toLowerCase() === this.config.userEmail.toLowerCase());
+        if (isInCC && !isInTo) {
+            return {
+                priority: 'cc_only',
+                action: 'read_only',
+                confidence: 80,
+                reasoning: 'Usuário está apenas em cópia (CC)',
+                tags: ['cc'],
+                sentiment: 'neutral',
+                isDirectedToMe: false,
+                requiresAction: false,
+            };
+        }
+        // ===========================================
+        // Newsletters e marketing
+        // ===========================================
+        if (this.isNewsletter(email)) {
+            return {
+                priority: 'low',
+                action: 'mark_read',
+                confidence: 85,
+                reasoning: 'Email identificado como newsletter/marketing',
+                tags: ['newsletter'],
+                sentiment: 'neutral',
+                isDirectedToMe: false,
+                requiresAction: false,
+            };
+        }
+        return null;
+    }
+    /**
+     * Verifica se é newsletter/marketing.
+     */
+    isNewsletter(email) {
+        const fromEmail = email.from.email.toLowerCase();
+        const subject = email.subject.toLowerCase();
+        const body = email.body.toLowerCase();
+        const content = `${subject} ${body} ${fromEmail}`;
+        // Indicadores de newsletter/marketing
+        const indicators = [
+            'unsubscribe', 'newsletter', 'marketing', 'noreply', 'no-reply',
+            'mailer-daemon', 'descadastrar', 'cancelar inscrição', 'email automático',
+            'não responda', 'bulk mail', 'promotional', 'promo', 'ofertas',
+            'off today', '% off', 'sale ends', 'limited time', 'act now',
+            'click here', 'view in browser', 'update preferences',
+        ];
+        // Domínios conhecidos de marketing/notificações automáticas
+        const autoSenders = [
+            'amazonses.com', 'sendgrid.net', 'mailchimp', 'mailgun',
+            'constantcontact', 'hubspot', 'salesforce', 'marketo',
+            'notifications@', 'notify@', 'alerts@', 'updates@',
+            'news@', 'info@', 'promo@', 'marketing@', 'newsletter@',
+            'noreply@', 'no-reply@', 'donotreply@', 'mailer@',
+            // Notificações de apps/serviços
+            'github.com', 'gitlab.com', 'bitbucket.org', 'jira', 'atlassian',
+            'slack.com', 'notion.so', 'figma.com', 'linear.app',
+            'trello.com', 'asana.com', 'monday.com', 'clickup.com',
+            'zoom.us', 'calendly.com', 'meetup.com',
+            // Transações/Recibos
+            'paypal', 'stripe', 'mercadopago', 'pagseguro', 'iugu',
+            'uber.com', '99app', 'ifood', 'rappi',
+            // Redes sociais
+            'linkedin.com', 'twitter.com', 'facebook.com', 'instagram.com',
+            'facebookmail.com', 'pinterest.com', 'tiktok.com',
+            // E-commerce
+            'amazon.com', 'mercadolivre', 'shopee', 'aliexpress', 'magazineluiza',
+            'americanas', 'submarino', 'casasbahia', 'extra.com',
+        ];
+        if (autoSenders.some(sender => fromEmail.includes(sender))) {
+            return true;
+        }
+        return indicators.some(indicator => content.includes(indicator));
+    }
+    /**
+     * Monta contexto do email para análise da IA.
+     */
+    buildEmailContext(email) {
+        const ccList = email.cc?.map(c => c.email).join(', ') || 'Nenhum';
+        return `
+=== INFORMAÇÕES DO EMAIL ===
+De: ${email.from.name || ''} <${email.from.email}>
+Para: ${email.to.map(t => t.email).join(', ')}
+CC: ${ccList}
+Assunto: ${email.subject}
+Data: ${email.date.toISOString()}
+Tem anexos: ${email.hasAttachments ? 'Sim' : 'Não'}
+
+=== CORPO DO EMAIL ===
+${email.body.substring(0, 4000)}${email.body.length > 4000 ? '\n[...truncado...]' : ''}
+
+=== CONTEXTO ===
+- Meu email: ${this.config.userEmail}
+- Estou no "Para": ${email.to.some(t => t.email.toLowerCase() === this.config.userEmail.toLowerCase())}
+- Estou no "CC": ${email.cc?.some(c => c.email.toLowerCase() === this.config.userEmail.toLowerCase()) || false}
+    `.trim();
+    }
+    /**
+     * System prompt para a IA.
+     */
+    buildSystemPrompt() {
+        let basePrompt = `Você é um assistente executivo especializado em triagem de emails corporativos.`;
+        // Adiciona contexto personalizado do usuário se disponível
+        if (this.config.customContext) {
+            basePrompt = `Você é um assistente executivo especializado em triagem de emails corporativos.
+
+═══════════════════════════════════════════════════════════════
+CONTEXTO DO USUÁRIO (IMPORTANTE - Use essas informações para personalizar a análise)
+═══════════════════════════════════════════════════════════════
+
+${this.config.customContext}
+
+═══════════════════════════════════════════════════════════════`;
+        }
+        return basePrompt + `
+
+Seu objetivo é analisar cada email e classificá-lo para ajudar o usuário a priorizar sua caixa de entrada de forma eficiente.
+
+═══════════════════════════════════════════════════════════════
+REGRAS DE PRIORIDADE MÁXIMA (sempre "urgent")
+═══════════════════════════════════════════════════════════════
+
+1. DOCUMENTOS PARA ASSINAR
+   - Emails de portais de assinatura (DocuSign, ClickSign, D4Sign, Autentique, ZapSign, etc.)
+   - Contratos aguardando assinatura
+   - Procurações, termos, acordos pendentes
+   - Qualquer documento que mencione "assinar", "assinatura pendente", "aguardando assinatura"
+
+2. QUESTÕES FINANCEIRAS URGENTES
+   - Problemas com pagamentos
+   - Transferências bancárias pendentes de aprovação
+   - Questões de compliance com prazo
+   - Auditoria ou regulatório
+
+3. CLIENTES/PARCEIROS IMPORTANTES
+   - Reclamações de clientes
+   - Questões de suporte crítico
+   - Parceiros estratégicos com problemas
+
+4. PRAZOS CRÍTICOS
+   - Deadlines mencionados para hoje ou amanhã
+   - "Urgente", "ASAP", "imediato" no assunto ou corpo
+   - Cobranças explícitas
+
+═══════════════════════════════════════════════════════════════
+NÍVEIS DE PRIORIDADE
+═══════════════════════════════════════════════════════════════
+
+🔴 urgent (Urgente)
+   - Requer resposta/ação IMEDIATA (hoje)
+   - Documentos para assinar
+   - Problemas críticos
+   - Deadline iminente
+
+🟠 attention (Atenção)
+   - Importante mas pode esperar algumas horas
+   - Requer leitura atenta
+   - Decisões a tomar
+   - Reuniões importantes
+
+🟡 informative (Informativo)
+   - Atualizações de projetos
+   - Informações úteis para contexto
+   - Relatórios e status
+   - Pode ler quando tiver tempo
+
+🟢 low (Baixa)
+   - Newsletters
+   - Marketing/promoções
+   - FYIs gerais
+   - Pode marcar como lido
+
+📎 cc_only (Apenas Cópia)
+   - Usuário está em CC
+   - Geralmente só para conhecimento
+   - Raramente requer ação
+
+═══════════════════════════════════════════════════════════════
+AÇÕES RECOMENDADAS
+═══════════════════════════════════════════════════════════════
+
+- respond_now: Responder imediatamente (minutos)
+- respond_later: Responder em até 24h
+- read_only: Apenas ler, sem necessidade de resposta
+- mark_read: Pode marcar como lido sem ler detalhadamente
+- archive: Pode arquivar diretamente
+- delegate: Sugerir delegação para equipe
+
+═══════════════════════════════════════════════════════════════
+ANÁLISE DE SENTIMENTO E TOM
+═══════════════════════════════════════════════════════════════
+
+Detecte e reporte:
+- Frustração ou insatisfação do remetente
+- Cobranças implícitas ou explícitas
+- Tom passivo-agressivo
+- Urgência real vs. urgência artificial
+- Elogios ou feedback positivo
+
+Sentimentos possíveis:
+- positive: Email positivo, elogio, agradecimento
+- neutral: Tom normal, profissional
+- negative: Reclamação, frustração, problema
+- urgent: Urgência genuína detectada
+
+═══════════════════════════════════════════════════════════════
+TAGS SUGERIDAS
+═══════════════════════════════════════════════════════════════
+
+Use tags relevantes como:
+- assinatura, contrato, documento
+- financeiro, pagamento, cobrança
+- reunião, agenda, calendar
+- projeto, desenvolvimento, produto
+- cliente, parceiro, fornecedor
+- compliance, regulatório, jurídico
+- suporte, bug, problema
+- rh, administrativo, interno
+
+═══════════════════════════════════════════════════════════════
+INSTRUÇÕES FINAIS
+═══════════════════════════════════════════════════════════════
+
+1. Seja CONSERVADOR ao classificar como "low" - na dúvida, suba a prioridade
+2. Qualquer menção a assinatura de documento = SEMPRE urgent
+3. Se detectar deadline, mencione na explicação
+4. Seja conciso no reasoning (1-2 frases)
+5. Sugira resposta apenas se for óbvio o que responder
+
+Lembre-se: Seu objetivo é ECONOMIZAR TEMPO do usuário, priorizando o que realmente importa.`;
+    }
+    /**
+     * Classificação padrão quando IA falha.
+     */
+    defaultClassification(email) {
+        const isDirectedToMe = email.to.some(t => t.email.toLowerCase() === this.config.userEmail.toLowerCase());
+        return {
+            priority: isDirectedToMe ? 'attention' : 'informative',
+            action: isDirectedToMe ? 'respond_later' : 'read_only',
+            confidence: 50,
+            reasoning: 'Classificação padrão (IA indisponível)',
+            tags: [],
+            sentiment: 'neutral',
+            isDirectedToMe,
+            requiresAction: isDirectedToMe,
+        };
+    }
+}
+//# sourceMappingURL=email-classifier.js.map
