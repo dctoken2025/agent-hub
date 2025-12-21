@@ -18,11 +18,28 @@ import { LegalAgent, type LegalAgentConfig } from '@agent-hub/legal-agent';
 import { FinancialAgent, type FinancialAgentConfig } from '@agent-hub/financial-agent';
 import { TaskAgent } from '@agent-hub/task-agent';
 import { StablecoinAgent, type StablecoinAgentConfig } from '@agent-hub/stablecoin-agent';
-import { getDb, users, userConfigs, agentLogs, stablecoins, stablecoinEvents, stablecoinAnomalies, supplySnapshots, aiUsageLogs } from '../db/index.js';
+import { getDb, users, userConfigs, agentLogs, stablecoins, stablecoinEvents, stablecoinAnomalies, supplySnapshots, aiUsageLogs, focusBriefings } from '../db/index.js';
 import { eq } from 'drizzle-orm';
 import { loadUserConfig, loadGlobalConfig } from '../routes/config.js';
 import { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase, saveActionItemsToDatabase } from '../routes/emails.js';
 import { createAgentLogger } from './activity-logger.js';
+
+/**
+ * Invalida o cache de briefings de foco de um usuário.
+ * Chamado quando um agente processa novos dados para garantir que o
+ * próximo acesso ao dashboard de foco gere um briefing atualizado.
+ */
+async function invalidateFocusBriefings(userId: string): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+
+  try {
+    await db.delete(focusBriefings).where(eq(focusBriefings.userId, userId));
+    console.log(`[AgentManager] 🎯 Cache de briefings de foco invalidado para usuário ${userId}`);
+  } catch (error) {
+    console.error('[AgentManager] Erro ao invalidar cache de briefings:', error);
+  }
+}
 
 // Configura função de salvamento de uso de AI
 async function saveUsageRecords(records: UsageRecord[]): Promise<void> {
@@ -558,6 +575,11 @@ export class AgentManager {
               console.error('[AgentManager] Erro ao registrar log do Task Agent:', logError);
             }
           }
+
+          // Invalida cache de briefings de foco quando há novos dados
+          if (processedCount > 0) {
+            await invalidateFocusBriefings(userId);
+          }
         } else if (agentId.includes('legal-agent')) {
           const legalData = data as { 
             analysesCount?: number; 
@@ -573,6 +595,9 @@ export class AgentManager {
               const riskEmoji = doc.riskLevel === 'high' ? '🔴' : doc.riskLevel === 'medium' ? '🟡' : '🟢';
               logger.detail(`${riskEmoji} ${doc.filename || 'Documento'} - Risco: ${doc.riskLevel || 'N/A'}`);
             });
+
+            // Invalida cache de briefings de foco quando há novos dados jurídicos
+            await invalidateFocusBriefings(userId);
           } else {
             logger.info('Nenhum documento para analisar neste ciclo', '📭');
           }
@@ -618,6 +643,9 @@ export class AgentManager {
                 console.error('[AgentManager] Erro ao salvar itens financeiros:', saveError);
               }
             }
+
+            // Invalida cache de briefings de foco quando há novos dados financeiros
+            await invalidateFocusBriefings(userId);
           } else {
             logger.info('Nenhuma cobrança identificada neste email', '📭');
           }
