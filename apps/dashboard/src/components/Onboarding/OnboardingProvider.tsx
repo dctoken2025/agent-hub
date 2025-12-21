@@ -21,22 +21,30 @@ const OnboardingContext = createContext<OnboardingContextType | undefined>(undef
 export function OnboardingProvider({ children }: { children: React.ReactNode }) {
   const [isActive, setIsActive] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [isCompleting, setIsCompleting] = useState(false); // Flag para evitar reinício durante skip/finish
+  const [hasStartedOnce, setHasStartedOnce] = useState(false); // Flag para controlar se já iniciou nesta sessão
   const [location, setLocation] = useLocation();
   const { user, onboardingCompleted, completeOnboarding } = useAuth();
 
   const currentStepData = isActive ? ONBOARDING_STEPS[currentStep] : null;
 
-  // Auto-inicia onboarding para novos usuários
+  // Auto-inicia onboarding para novos usuários (apenas uma vez por sessão)
   useEffect(() => {
-    if (user && !onboardingCompleted && !isActive) {
+    // Não reinicia se:
+    // - Já está ativo
+    // - Já completou o onboarding
+    // - Está em processo de completar/skip
+    // - Já iniciou uma vez nesta sessão
+    if (user && !onboardingCompleted && !isActive && !isCompleting && !hasStartedOnce) {
       // Pequeno delay para garantir que a página carregou
       const timer = setTimeout(() => {
         setIsActive(true);
         setCurrentStep(0);
+        setHasStartedOnce(true);
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [user, onboardingCompleted, isActive]);
+  }, [user, onboardingCompleted, isActive, isCompleting, hasStartedOnce]);
 
   // Navega para a página correta quando o passo muda
   useEffect(() => {
@@ -58,15 +66,19 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   }, [currentStep]);
 
   const skipOnboarding = useCallback(async () => {
+    setIsCompleting(true); // Marca como em processo de completar
     setIsActive(false);
     setCurrentStep(0);
     await completeOnboarding();
+    // Não reseta isCompleting para garantir que nunca reinicie
   }, [completeOnboarding]);
 
   const finishOnboarding = useCallback(async () => {
+    setIsCompleting(true); // Marca como em processo de completar
     setIsActive(false);
     setCurrentStep(0);
     await completeOnboarding();
+    // Não reseta isCompleting para garantir que nunca reinicie
   }, [completeOnboarding]);
 
   // Handler para avançar passo (precisa ser após finishOnboarding)

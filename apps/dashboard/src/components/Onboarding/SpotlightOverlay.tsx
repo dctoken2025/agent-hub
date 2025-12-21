@@ -97,7 +97,7 @@ export function SpotlightOverlay({
       }
     : null;
 
-  // Calcula posição do tooltip
+  // Calcula posição do tooltip com bounds checking
   const getTooltipPosition = (): React.CSSProperties => {
     if (!targetRect) {
       // Centro da tela
@@ -112,35 +112,59 @@ export function SpotlightOverlay({
     const tooltipWidth = 380;
     const tooltipHeight = 200;
     const gap = 16;
+    const margin = 16; // Margem mínima da borda da tela
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+
+    // Função auxiliar para garantir que o tooltip fica visível
+    const clampPosition = (top: number, left: number) => {
+      return {
+        position: 'fixed' as const,
+        top: Math.max(margin, Math.min(top, viewportHeight - tooltipHeight - margin)),
+        left: Math.max(margin, Math.min(left, viewportWidth - tooltipWidth - margin)),
+      };
+    };
+
+    // Usa getBoundingClientRect para posição relativa à viewport (fixed positioning)
+    const viewportTop = targetRect.top - window.scrollY;
+    const viewportLeft = targetRect.left - window.scrollX;
+
+    let calculatedTop: number;
+    let calculatedLeft: number;
 
     switch (step.position) {
       case 'top':
-        return {
-          position: 'absolute' as const,
-          top: targetRect.top - tooltipHeight - gap,
-          left: targetRect.left + targetRect.width / 2 - tooltipWidth / 2,
-        };
+        calculatedTop = viewportTop - tooltipHeight - gap;
+        calculatedLeft = viewportLeft + targetRect.width / 2 - tooltipWidth / 2;
+        // Se não couber em cima, coloca embaixo
+        if (calculatedTop < margin) {
+          calculatedTop = viewportTop + targetRect.height + gap;
+        }
+        break;
       case 'bottom':
-        return {
-          position: 'absolute' as const,
-          top: targetRect.top + targetRect.height + gap,
-          left: Math.max(16, Math.min(
-            targetRect.left + targetRect.width / 2 - tooltipWidth / 2,
-            window.innerWidth - tooltipWidth - 16
-          )),
-        };
+        calculatedTop = viewportTop + targetRect.height + gap;
+        calculatedLeft = viewportLeft + targetRect.width / 2 - tooltipWidth / 2;
+        // Se não couber embaixo, coloca em cima
+        if (calculatedTop + tooltipHeight > viewportHeight - margin) {
+          calculatedTop = viewportTop - tooltipHeight - gap;
+        }
+        break;
       case 'left':
-        return {
-          position: 'absolute' as const,
-          top: targetRect.top + targetRect.height / 2 - tooltipHeight / 2,
-          left: targetRect.left - tooltipWidth - gap,
-        };
+        calculatedTop = viewportTop + targetRect.height / 2 - tooltipHeight / 2;
+        calculatedLeft = viewportLeft - tooltipWidth - gap;
+        // Se não couber à esquerda, coloca à direita
+        if (calculatedLeft < margin) {
+          calculatedLeft = viewportLeft + targetRect.width + gap;
+        }
+        break;
       case 'right':
-        return {
-          position: 'absolute' as const,
-          top: targetRect.top + targetRect.height / 2 - tooltipHeight / 2,
-          left: targetRect.left + targetRect.width + gap,
-        };
+        calculatedTop = viewportTop + targetRect.height / 2 - tooltipHeight / 2;
+        calculatedLeft = viewportLeft + targetRect.width + gap;
+        // Se não couber à direita, coloca à esquerda
+        if (calculatedLeft + tooltipWidth > viewportWidth - margin) {
+          calculatedLeft = viewportLeft - tooltipWidth - gap;
+        }
+        break;
       default:
         return {
           position: 'fixed' as const,
@@ -149,6 +173,8 @@ export function SpotlightOverlay({
           transform: 'translate(-50%, -50%)',
         };
     }
+
+    return clampPosition(calculatedTop, calculatedLeft);
   };
 
   return createPortal(
