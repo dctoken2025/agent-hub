@@ -21,6 +21,46 @@ export interface EmailAgentResult {
     actionItemsDetected: number;
     actionItems: ActionItem[];
 }
+/**
+ * Tipos de eventos de progresso do Email Agent
+ */
+export type EmailProgressEvent = {
+    type: 'fetching_started';
+    totalPages: number;
+} | {
+    type: 'page_fetched';
+    page: number;
+    emailsInPage: number;
+    totalSoFar: number;
+} | {
+    type: 'processing_started';
+    totalEmails: number;
+} | {
+    type: 'email_classified';
+    email: ClassifiedEmail;
+    current: number;
+    total: number;
+} | {
+    type: 'email_saved';
+    emailId: string;
+    current: number;
+    total: number;
+} | {
+    type: 'batch_processed';
+    count: number;
+    total: number;
+} | {
+    type: 'processing_financial';
+    emailSubject: string;
+} | {
+    type: 'processing_legal';
+    emailSubject: string;
+} | {
+    type: 'processing_tasks';
+    emailSubject: string;
+};
+export type ProgressCallback = (event: EmailProgressEvent) => void | Promise<void>;
+export type EmailSaveCallback = (emails: ClassifiedEmail[]) => Promise<void>;
 export declare class EmailAgent extends Agent<void, EmailAgentResult> {
     private gmailClient;
     private classifier;
@@ -30,6 +70,8 @@ export declare class EmailAgent extends Agent<void, EmailAgentResult> {
     private financialAgent?;
     private taskAgent?;
     private processedLabelId?;
+    onProgress?: ProgressCallback;
+    onEmailsClassified?: EmailSaveCallback;
     constructor(agentConfig: AgentConfig, emailConfig: EmailAgentConfig, notifier?: Notifier);
     private initializeLegalAgent;
     private initializeFinancialAgent;

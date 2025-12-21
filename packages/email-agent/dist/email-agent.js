@@ -17,6 +17,9 @@ export class EmailAgent extends Agent {
     financialAgent;
     taskAgent;
     processedLabelId;
+    // Callbacks de progresso e salvamento
+    onProgress;
+    onEmailsClassified;
     constructor(agentConfig, emailConfig, notifier) {
         super(agentConfig);
         this.emailConfig = emailConfig;
@@ -154,6 +157,10 @@ export class EmailAgent extends Agent {
             const maxPages = Math.min(Math.ceil(maxEmailsPerRun / maxPerPage), 10);
             console.log(`[EmailAgent] Buscando até ${maxEmailsPerRun} emails (max ${maxPages} páginas)...`);
             console.log(`[EmailAgent] 🔍 Query: "${query}"`);
+            // Notifica início da busca
+            if (this.onProgress) {
+                await this.onProgress({ type: 'fetching_started', totalPages: maxPages });
+            }
             // Loop de paginação - busca TODAS as páginas
             while (pagesLoaded < maxPages) {
                 // Não passa labelIds para buscar de TODAS as categorias (Inbox, Promoções, Social, etc.)
@@ -170,6 +177,15 @@ export class EmailAgent extends Agent {
                 pageEmails.forEach(e => this.processedEmailIds.add(e.id));
                 pagesLoaded++;
                 console.log(`[EmailAgent] Página ${pagesLoaded}: ${pageEmails.length} emails, ${newEmails.length} novos (total: ${allEmails.length})`);
+                // Notifica página carregada
+                if (this.onProgress) {
+                    await this.onProgress({
+                        type: 'page_fetched',
+                        page: pagesLoaded,
+                        emailsInPage: newEmails.length,
+                        totalSoFar: allEmails.length
+                    });
+                }
                 if (!nextPageToken) {
                     console.log(`[EmailAgent] Fim da lista de emails (${pagesLoaded} páginas)`);
                     break;
@@ -180,6 +196,10 @@ export class EmailAgent extends Agent {
             }
             const emails = allEmails;
             console.log(`[EmailAgent] Total de novos emails para processar: ${emails.length}`);
+            // Notifica início do processamento
+            if (this.onProgress && emails.length > 0) {
+                await this.onProgress({ type: 'processing_started', totalEmails: emails.length });
+            }
             const classifiedEmails = [];
             const legalAnalyses = [];
             const financialItems = [];
@@ -194,8 +214,13 @@ export class EmailAgent extends Agent {
                 low: 0,
                 cc_only: 0,
             };
+            // Buffer para salvamento progressivo
+            const SAVE_BATCH_SIZE = 5;
+            let unsavedEmails = [];
             // Classifica cada email
+            let processedIndex = 0;
             for (const email of emails) {
+                processedIndex++;
                 try {
                     const classification = await this.classifier.classify(email);
                     const classifiedEmail = {
@@ -204,13 +229,38 @@ export class EmailAgent extends Agent {
                         classifiedAt: new Date(),
                     };
                     classifiedEmails.push(classifiedEmail);
+                    unsavedEmails.push(classifiedEmail);
                     counts[classification.priority]++;
                     console.log(`[EmailAgent] ${this.getPriorityEmoji(classification.priority)} ` +
-                        `${email.subject.substring(0, 50)} - ${classification.priority}`);
+                        `[${processedIndex}/${emails.length}] ${email.subject.substring(0, 50)} - ${classification.priority}`);
+                    // Notifica email classificado
+                    if (this.onProgress) {
+                        await this.onProgress({
+                            type: 'email_classified',
+                            email: classifiedEmail,
+                            current: processedIndex,
+                            total: emails.length
+                        });
+                    }
+                    // Salva batch de emails progressivamente
+                    if (unsavedEmails.length >= SAVE_BATCH_SIZE && this.onEmailsClassified) {
+                        await this.onEmailsClassified(unsavedEmails);
+                        if (this.onProgress) {
+                            await this.onProgress({
+                                type: 'batch_processed',
+                                count: unsavedEmails.length,
+                                total: emails.length
+                            });
+                        }
+                        unsavedEmails = [];
+                    }
                     // Verifica se é email sobre contrato com anexos
                     if (this.isContractEmail(email) && email.hasAttachments) {
                         contractsDetected++;
                         console.log(`[EmailAgent] 📜 Contrato detectado: ${email.subject}`);
+                        if (this.onProgress) {
+                            await this.onProgress({ type: 'processing_legal', emailSubject: email.subject.substring(0, 50) });
+                        }
                         // Processa com Legal Agent
                         const analyses = await this.processWithLegalAgent(email);
                         legalAnalyses.push(...analyses);
@@ -218,6 +268,9 @@ export class EmailAgent extends Agent {
                     // Verifica se é email financeiro (cobranças, boletos, faturas)
                     if (this.isFinancialEmail(email)) {
                         console.log(`[EmailAgent] 💰 Email financeiro detectado: ${email.subject}`);
+                        if (this.onProgress) {
+                            await this.onProgress({ type: 'processing_financial', emailSubject: email.subject.substring(0, 50) });
+                        }
                         // Processa com Financial Agent
                         const items = await this.processWithFinancialAgent(email);
                         if (items.length > 0) {
@@ -228,6 +281,9 @@ export class EmailAgent extends Agent {
                     // Verifica se email contém action items (tarefas, perguntas, pendências)
                     if (this.hasActionItems(email)) {
                         console.log(`[EmailAgent] 📋 Action items detectados em: ${email.subject}`);
+                        if (this.onProgress) {
+                            await this.onProgress({ type: 'processing_tasks', emailSubject: email.subject.substring(0, 50) });
+                        }
                         // Processa com Task Agent
                         const tasks = await this.processWithTaskAgent(email);
                         if (tasks.length > 0) {
@@ -248,6 +304,17 @@ export class EmailAgent extends Agent {
                 }
                 catch (error) {
                     console.error(`[EmailAgent] Erro ao classificar email ${email.id}:`, error);
+                }
+            }
+            // Salva emails restantes no buffer
+            if (unsavedEmails.length > 0 && this.onEmailsClassified) {
+                await this.onEmailsClassified(unsavedEmails);
+                if (this.onProgress) {
+                    await this.onProgress({
+                        type: 'batch_processed',
+                        count: unsavedEmails.length,
+                        total: emails.length
+                    });
                 }
             }
             // Notifica sobre emails urgentes

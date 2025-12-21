@@ -142,6 +142,9 @@ export class AgentManager {
                 if (userConfig.emailAgent.customRules?.length > 0) {
                     emailAgent.setCustomRules(userConfig.emailAgent.customRules);
                 }
+                // Configura callbacks de progresso para logs em tempo real
+                const emailLogger = createAgentLogger(userId, `email-agent-${userId}`, 'Email Agent');
+                this.setupEmailAgentProgress(emailAgent, userId, emailLogger);
                 // Registra eventos para logging
                 this.setupAgentLogging(emailAgent, userId);
                 scheduler.register(emailAgent);
@@ -396,6 +399,65 @@ export class AgentManager {
         console.log(`[AgentManager] ✅ Agentes iniciados para usuário ${userId}`);
     }
     /**
+     * Configura callbacks de progresso para o Email Agent.
+     * Emite logs em tempo real e salva emails progressivamente.
+     */
+    setupEmailAgentProgress(emailAgent, userId, logger) {
+        // Callback de progresso - emite logs em tempo real
+        emailAgent.onProgress = async (event) => {
+            switch (event.type) {
+                case 'fetching_started':
+                    logger.info(`Buscando emails do Gmail...`, '📨');
+                    break;
+                case 'page_fetched':
+                    logger.info(`Página ${event.page}: ${event.emailsInPage} emails encontrados (total: ${event.totalSoFar})`, '📄');
+                    break;
+                case 'processing_started':
+                    logger.info(`Iniciando classificação de ${event.totalEmails} email(s)...`, '🔄');
+                    break;
+                case 'email_classified':
+                    const priorityEmoji = this.getPriorityEmoji(event.email.classification.priority);
+                    logger.info(`${priorityEmoji} [${event.current}/${event.total}] ${event.email.subject.substring(0, 50)}`, '✉️');
+                    break;
+                case 'batch_processed':
+                    logger.info(`${event.count} email(s) salvos no banco`, '💾');
+                    break;
+                case 'processing_legal':
+                    logger.info(`Analisando contrato: ${event.emailSubject}...`, '📜');
+                    break;
+                case 'processing_financial':
+                    logger.info(`Analisando cobrança: ${event.emailSubject}...`, '💰');
+                    break;
+                case 'processing_tasks':
+                    logger.info(`Extraindo tarefas: ${event.emailSubject}...`, '📋');
+                    break;
+            }
+        };
+        // Callback de salvamento progressivo - salva emails conforme são classificados
+        emailAgent.onEmailsClassified = async (emails) => {
+            try {
+                await saveEmailsToDatabase(emails, userId);
+                console.log(`[AgentManager] 💾 ${emails.length} email(s) salvos progressivamente para ${userId}`);
+            }
+            catch (error) {
+                console.error(`[AgentManager] Erro ao salvar emails progressivamente:`, error);
+            }
+        };
+    }
+    /**
+     * Retorna emoji de prioridade.
+     */
+    getPriorityEmoji(priority) {
+        switch (priority) {
+            case 'urgent': return '🚨';
+            case 'attention': return '🔴';
+            case 'informative': return '📄';
+            case 'low': return '📋';
+            case 'cc_only': return '📎';
+            default: return '✉️';
+        }
+    }
+    /**
      * Configura logging de eventos do agente.
      */
     setupAgentLogging(agent, userId) {
@@ -445,10 +507,7 @@ export class AgentManager {
                     else {
                         logger.info('Nenhum email novo para processar', '📭');
                     }
-                    // Salva dados no banco
-                    if (emailData?.emails && emailData.emails.length > 0) {
-                        await saveEmailsToDatabase(emailData.emails, userId);
-                    }
+                    // Salva dados complementares no banco (emails já salvos progressivamente)
                     if (emailData?.legalAnalyses && emailData.legalAnalyses.length > 0) {
                         await saveLegalAnalysesToDatabase(emailData.legalAnalyses, userId);
                     }

@@ -16,7 +16,12 @@ export type {
 } from './types.js';
 
 // Types from email-agent.ts
-export type { EmailAgentResult } from './email-agent.js';
+export type { 
+  EmailAgentResult, 
+  EmailProgressEvent, 
+  ProgressCallback, 
+  EmailSaveCallback 
+} from './email-agent.js';
 
 // Re-export from legal-agent for convenience
 export type { ContractAnalysis } from '@agent-hub/legal-agent';

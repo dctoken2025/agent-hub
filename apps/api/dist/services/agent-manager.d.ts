@@ -13,6 +13,15 @@ export declare class AgentManager {
      */
     initializeForUser(userId: string): Promise<void>;
     /**
+     * Configura callbacks de progresso para o Email Agent.
+     * Emite logs em tempo real e salva emails progressivamente.
+     */
+    private setupEmailAgentProgress;
+    /**
+     * Retorna emoji de prioridade.
+     */
+    private getPriorityEmoji;
+    /**
      * Configura logging de eventos do agente.
      */
     private setupAgentLogging;
