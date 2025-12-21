@@ -11,6 +11,7 @@ interface User {
   trialEndsAt?: string;
   trialDaysRemaining?: number | null;
   isTrialExpired?: boolean;
+  onboardingCompleted?: boolean;
 }
 
 interface AuthContextType {
@@ -21,8 +22,10 @@ interface AuthContextType {
   isAccountActive: boolean;
   isTrialExpired: boolean;
   trialDaysRemaining: number | null;
+  onboardingCompleted: boolean;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  completeOnboarding: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -116,6 +119,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Marcar onboarding como completo
+  const completeOnboarding = async () => {
+    if (!token) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/auth/me/onboarding`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        // Atualiza o usuário localmente
+        setUser(prev => prev ? { ...prev, onboardingCompleted: true } : null);
+      }
+    } catch (error) {
+      console.error('Erro ao completar onboarding:', error);
+    }
+  };
+
   // Verifica se o trial expirou (considera trial_expired ou se isTrialExpired é true)
   const isTrialExpired = user?.accountStatus === 'trial_expired' || user?.isTrialExpired === true;
   
@@ -132,8 +157,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAccountActive,
         isTrialExpired,
         trialDaysRemaining: user?.trialDaysRemaining ?? null,
+        onboardingCompleted: user?.onboardingCompleted ?? false,
         logout,
         refreshUser,
+        completeOnboarding,
       }}
     >
       {children}

@@ -416,7 +416,7 @@ export default function AgentConfig() {
       </div>
 
       {/* Email Agent Config */}
-      <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
+      <div className="bg-card rounded-xl border shadow-sm overflow-hidden" data-onboarding="config-section">
         <button
           onClick={() => setExpandedSection(expandedSection === 'email' ? null : 'email')}
           className="w-full p-4 flex items-center justify-between hover:bg-muted/50 transition-colors"

@@ -438,11 +438,36 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           trialEndsAt: user.trialEndsAt,
           trialDaysRemaining,
           isTrialExpired,
+          onboardingCompleted: user.onboardingCompleted ?? false,
         },
       };
     } catch (error) {
       console.error('[Auth] Erro ao buscar usuário:', error);
       return reply.status(500).send({ error: 'Erro ao buscar usuário' });
+    }
+  });
+
+  // ===========================================
+  // Marcar Onboarding como Completo
+  // ===========================================
+  app.post('/me/onboarding', { preHandler: [authMiddleware] }, async (request, reply) => {
+    const db = getDb();
+    if (!db) {
+      return reply.status(500).send({ error: 'Banco de dados não disponível' });
+    }
+
+    try {
+      await db.update(users)
+        .set({ 
+          onboardingCompleted: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, request.user!.id));
+
+      return { success: true, message: 'Onboarding concluído' };
+    } catch (error) {
+      console.error('[Auth] Erro ao marcar onboarding:', error);
+      return reply.status(500).send({ error: 'Erro ao atualizar onboarding' });
     }
   });
 

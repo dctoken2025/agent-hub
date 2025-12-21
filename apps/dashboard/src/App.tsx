@@ -1,6 +1,7 @@
 import { Route, Switch } from 'wouter';
 import { Layout } from './components/Layout';
 import { DialogProvider } from './components/Dialog';
+import { OnboardingProvider } from './components/Onboarding';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Dashboard } from './pages/Dashboard';
 import { Emails } from './pages/Emails';
@@ -113,33 +114,35 @@ function AppContent() {
   // Autenticado - mostra app
   return (
     <DialogProvider>
-      {/* Banners de status da conta */}
-      {!isAdmin && showTrialBanner && <TrialBanner daysRemaining={trialDaysRemaining} isExpired={isTrialExpired} />}
-      {user.accountStatus === 'pending' && !showTrialBanner && <AccountPendingBanner />}
-      {user.accountStatus === 'suspended' && !showTrialBanner && <AccountSuspendedBanner />}
-      
-      <Layout hasBanner={hasBanner}>
-        <Switch>
-          <Route path="/" component={Dashboard} />
-          <Route path="/focus" component={Focus} />
-          <Route path="/emails" component={Emails} />
-          <Route path="/agents" component={Agents} />
-          <Route path="/agent-config" component={AgentConfig} />
-          <Route path="/logs" component={Logs} />
-          <Route path="/legal" component={LegalAnalyses} />
-          <Route path="/financial" component={Financial} />
-          <Route path="/tasks" component={Tasks} />
-          <Route path="/stablecoins" component={StablecoinMonitor} />
-          {isAdmin && <Route path="/users" component={Users} />}
-          <Route path="/ai-usage" component={AIUsage} />
-          <Route path="/settings" component={Settings} />
-          <Route>
-            <div className="flex items-center justify-center h-64">
-              <p className="text-muted-foreground">Página não encontrada</p>
-            </div>
-          </Route>
-        </Switch>
-      </Layout>
+      <OnboardingProvider>
+        {/* Banners de status da conta */}
+        {!isAdmin && showTrialBanner && <TrialBanner daysRemaining={trialDaysRemaining} isExpired={isTrialExpired} />}
+        {user.accountStatus === 'pending' && !showTrialBanner && <AccountPendingBanner />}
+        {user.accountStatus === 'suspended' && !showTrialBanner && <AccountSuspendedBanner />}
+        
+        <Layout hasBanner={hasBanner}>
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/focus" component={Focus} />
+            <Route path="/emails" component={Emails} />
+            <Route path="/agents" component={Agents} />
+            <Route path="/agent-config" component={AgentConfig} />
+            <Route path="/logs" component={Logs} />
+            <Route path="/legal" component={LegalAnalyses} />
+            <Route path="/financial" component={Financial} />
+            <Route path="/tasks" component={Tasks} />
+            <Route path="/stablecoins" component={StablecoinMonitor} />
+            {isAdmin && <Route path="/users" component={Users} />}
+            <Route path="/ai-usage" component={AIUsage} />
+            <Route path="/settings" component={Settings} />
+            <Route>
+              <div className="flex items-center justify-center h-64">
+                <p className="text-muted-foreground">Página não encontrada</p>
+              </div>
+            </Route>
+          </Switch>
+        </Layout>
+      </OnboardingProvider>
     </DialogProvider>
   );
 }

@@ -167,7 +167,7 @@ export function Focus() {
       {briefing && !isLoading && (
         <div className="space-y-6">
           {/* Briefing Card */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/10 via-purple-500/10 to-fuchsia-500/10 border border-violet-500/20">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/10 via-purple-500/10 to-fuchsia-500/10 border border-violet-500/20" data-onboarding="focus-card">
             <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-violet-500/20 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
             
             <div className="relative p-6 space-y-4">
@@ -189,13 +189,14 @@ export function Focus() {
               {briefing.keyHighlights.length > 0 && (
                 <div className="flex flex-wrap gap-2 pt-2">
                   {briefing.keyHighlights.map((highlight, i) => (
-                    <span 
+                    <a 
                       key={i}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-500/20 text-violet-300 rounded-full text-sm"
+                      href="#"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-full text-sm font-medium shadow-sm transition-colors"
                     >
                       <TrendingUp className="h-3.5 w-3.5" />
                       {highlight}
-                    </span>
+                    </a>
                   ))}
                 </div>
               )}

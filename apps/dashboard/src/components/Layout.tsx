@@ -17,11 +17,13 @@ import {
   Brain,
   Users,
   CheckSquare,
-  Target
+  Target,
+  GraduationCap
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOnboarding } from './Onboarding';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -48,6 +50,7 @@ export function Layout({ children, hasBanner = false }: LayoutProps) {
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout, isAdmin } = useAuth();
+  const { startOnboarding, isActive: isOnboardingActive } = useOnboarding();
 
   return (
     <div className={cn("min-h-screen bg-background", hasBanner && "pt-12")}>
@@ -65,7 +68,7 @@ export function Layout({ children, hasBanner = false }: LayoutProps) {
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="flex items-center justify-between h-16 px-6 border-b">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-onboarding="logo">
             <Bot className="h-8 w-8 text-primary" />
             <span className="text-xl font-bold">Agent Hub</span>
           </div>
@@ -117,6 +120,17 @@ export function Layout({ children, hasBanner = false }: LayoutProps) {
               </div>
             </div>
           </div>
+
+          {/* Tutorial button */}
+          {!isOnboardingActive && (
+            <button
+              onClick={startOnboarding}
+              className="w-full flex items-center gap-3 px-3 py-2 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-colors"
+            >
+              <GraduationCap className="h-5 w-5" />
+              Ver Tutorial
+            </button>
+          )}
 
           {/* Logout button */}
           <button

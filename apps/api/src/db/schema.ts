@@ -13,6 +13,7 @@ export const users = pgTable('users', {
   isActive: boolean('is_active').default(true),
   accountStatus: varchar('account_status', { length: 20 }).notNull().default('pending'), // 'pending', 'active', 'suspended', 'trial_expired'
   trialEndsAt: timestamp('trial_ends_at'), // Data de expiração do período de teste (7 dias após criação)
+  onboardingCompleted: boolean('onboarding_completed').default(false), // Se o usuário já completou o tutorial de onboarding
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });

@@ -174,6 +174,7 @@ export function Agents() {
           <button
             onClick={() => startAllMutation.mutate()}
             disabled={!isAccountActive || isTrialExpired || startAllMutation.isPending}
+            data-onboarding="start-all"
             className={cn(
               "flex items-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-50",
               isAccountActive && !isTrialExpired
@@ -209,7 +210,7 @@ export function Agents() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2" data-onboarding="agents-list">
           {agents.map((agent) => (
             <div 
               key={agent.config.id}
@@ -277,6 +278,7 @@ export function Agents() {
               {/* Botão Ensinar Agente */}
               <button
                 onClick={() => setTeachingAgent({ id: agent.config.id, name: agent.config.name })}
+                data-onboarding="teach-button"
                 className={cn(
                   "w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-all font-medium",
                   contextsData?.[agent.config.id]
