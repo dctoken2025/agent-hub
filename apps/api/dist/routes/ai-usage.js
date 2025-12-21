@@ -216,6 +216,7 @@ export const aiUsageRoutes = async (app) => {
                 };
             }
             const data = await response.json();
+            console.log('[AIUsage] Anthropic response:', JSON.stringify(data, null, 2));
             return {
                 data,
                 period: {
@@ -266,6 +267,7 @@ export const aiUsageRoutes = async (app) => {
                 };
             }
             const costData = await response.json();
+            console.log('[AIUsage] OpenAI costs response:', JSON.stringify(costData, null, 2));
             // Também busca uso de tokens
             const usageResponse = await fetch(`https://api.openai.com/v1/organization/usage/completions?` +
                 `start_time=${Math.floor(startDate.getTime() / 1000)}&` +

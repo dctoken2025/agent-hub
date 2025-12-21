@@ -513,21 +513,42 @@ export function AIUsage() {
                     ) : openaiCosts?.costs ? (
                       <div className="space-y-2">
                         {(() => {
-                          // Calcula custo total
-                          const totalCost = openaiCosts.costs?.data?.reduce((acc, bucket) => {
-                            const bucketTotal = bucket.results?.reduce((sum, r) => sum + (r.amount?.value || 0), 0) || 0;
-                            return acc + bucketTotal;
-                          }, 0) || 0;
-                          return (
-                            <>
-                              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                                ${totalCost.toFixed(4)}
+                          try {
+                            // Calcula custo total - estrutura pode variar
+                            let totalCost = 0;
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const costsData = openaiCosts.costs as any;
+                            
+                            if (costsData?.data && Array.isArray(costsData.data)) {
+                              totalCost = costsData.data.reduce((acc: number, bucket: { results?: Array<{ amount?: { value?: number } }> }) => {
+                                if (bucket.results && Array.isArray(bucket.results)) {
+                                  const bucketTotal = bucket.results.reduce((sum: number, r) => sum + (r.amount?.value || 0), 0);
+                                  return acc + bucketTotal;
+                                }
+                                return acc;
+                              }, 0);
+                            } else if (typeof costsData?.total_cost === 'number') {
+                              totalCost = costsData.total_cost;
+                            }
+                            
+                            return (
+                              <>
+                                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                  ${totalCost.toFixed(4)}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Últimos 7 dias (via Admin API)
+                                </p>
+                              </>
+                            );
+                          } catch (e) {
+                            console.error('Erro ao processar custos OpenAI:', e);
+                            return (
+                              <div className="text-sm text-amber-600">
+                                Erro ao processar dados
                               </div>
-                              <p className="text-xs text-muted-foreground">
-                                Últimos 7 dias (via Admin API)
-                              </p>
-                            </>
-                          );
+                            );
+                          }
                         })()}
                       </div>
                     ) : !openaiLoading && (
