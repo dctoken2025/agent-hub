@@ -221,8 +221,7 @@ export const aiUsageRoutes: FastifyPluginAsync = async (app) => {
       const response = await fetch(
         `https://api.anthropic.com/v1/organizations/cost_report?` + 
         `starting_at=${startDate.toISOString().split('T')[0]}&` +
-        `ending_at=${endDate.toISOString().split('T')[0]}&` +
-        `group_by[]=model`,
+        `ending_at=${endDate.toISOString().split('T')[0]}`,
         {
           method: 'GET',
           headers: {

@@ -201,8 +201,7 @@ export const aiUsageRoutes = async (app) => {
             startDate.setDate(startDate.getDate() - 7);
             const response = await fetch(`https://api.anthropic.com/v1/organizations/cost_report?` +
                 `starting_at=${startDate.toISOString().split('T')[0]}&` +
-                `ending_at=${endDate.toISOString().split('T')[0]}&` +
-                `group_by[]=model`, {
+                `ending_at=${endDate.toISOString().split('T')[0]}`, {
                 method: 'GET',
                 headers: {
                     'x-api-key': adminApiKey,
