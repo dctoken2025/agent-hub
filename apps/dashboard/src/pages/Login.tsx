@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Bot, Loader2, AlertCircle, Mail, FileText, DollarSign, TrendingUp, Zap, Clock, Shield, Brain, ArrowRight, CheckCircle2, Sparkles } from 'lucide-react';
+import { Bot, Loader2, AlertCircle, Mail, FileText, DollarSign, TrendingUp, Zap, Clock, Shield, Brain, ArrowRight, CheckCircle2, Sparkles, Target, CheckSquare, GraduationCap, Users } from 'lucide-react';
 import { API_URL } from '@/config';
 
 const features = [
+  {
+    icon: Target,
+    title: 'Briefing Diário Inteligente',
+    description: 'Análise consolidada de tudo que importa: emails, tarefas, pagamentos e contratos. Comece o dia sabendo exatamente onde focar.',
+    highlights: ['Priorização automática por urgência', 'Visão unificada de pendências', 'Briefings diários e semanais'],
+    color: 'from-violet-500 to-fuchsia-500',
+    isNew: true,
+  },
   {
     icon: Mail,
     title: 'Triagem Inteligente de Emails',
@@ -11,11 +19,19 @@ const features = [
     color: 'from-blue-500 to-cyan-500',
   },
   {
+    icon: CheckSquare,
+    title: 'Extração de Tarefas',
+    description: 'Detecta automaticamente perguntas, pendências e action items nos seus emails. Nunca mais esqueça de responder algo importante.',
+    highlights: ['Identifica stakeholders e projetos', 'Calcula prioridade automática', 'Sugere respostas rápidas'],
+    color: 'from-teal-500 to-emerald-500',
+    isNew: true,
+  },
+  {
     icon: FileText,
     title: 'Análise de Contratos',
     description: 'Recebe um contrato por email? A IA lê, analisa riscos, identifica cláusulas críticas e lista os próximos passos.',
     highlights: ['Identifica riscos e cláusulas', 'Define responsáveis e ações', 'Extrai datas e valores'],
-    color: 'from-violet-500 to-purple-500',
+    color: 'from-purple-500 to-indigo-500',
   },
   {
     icon: DollarSign,
@@ -38,6 +54,8 @@ const benefits = [
   { icon: Shield, text: 'Nunca perca um deadline ou vencimento importante' },
   { icon: Brain, text: 'IA Claude analisa contexto e prioriza o que importa' },
   { icon: Zap, text: 'Agentes trabalham 24/7 automaticamente' },
+  { icon: GraduationCap, text: 'Ensine os agentes sobre seu contexto específico' },
+  { icon: Users, text: 'Agentes identificam stakeholders VIP automaticamente' },
 ];
 
 export function Login() {
@@ -204,7 +222,7 @@ export function Login() {
                 Powered by Claude AI
               </div>
               <h2 className="text-4xl md:text-5xl font-bold mb-4">
-                Quatro agentes,{' '}
+                Seis agentes,{' '}
                 <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">
                   infinitas possibilidades
                 </span>
@@ -214,7 +232,7 @@ export function Login() {
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {features.map((feature, index) => (
                 <div
                   key={index}
@@ -222,6 +240,13 @@ export function Login() {
                 >
                   {/* Gradient accent */}
                   <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${feature.color} rounded-t-2xl opacity-60`} />
+                  
+                  {/* New badge */}
+                  {feature.isNew && (
+                    <div className="absolute top-4 right-4 px-2 py-1 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white text-xs font-bold rounded-full">
+                      NOVO
+                    </div>
+                  )}
                   
                   <div className={`inline-flex items-center justify-center w-14 h-14 rounded-xl bg-gradient-to-br ${feature.color} mb-6 shadow-lg`}>
                     <feature.icon className="w-7 h-7 text-white" />
@@ -249,6 +274,90 @@ export function Login() {
           </div>
         </section>
 
+        {/* Teach Agents Section */}
+        <section className="py-24 px-4 border-t border-white/5">
+          <div className="max-w-5xl mx-auto">
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-500/10 via-purple-500/10 to-fuchsia-500/10 border border-violet-500/20 p-8 md:p-12">
+              {/* Background decoration */}
+              <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-violet-500/20 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+              
+              <div className="relative grid md:grid-cols-2 gap-8 items-center">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-violet-500/20 border border-violet-500/30 rounded-full text-violet-400 text-sm font-medium mb-6">
+                    <GraduationCap className="w-4 h-4" />
+                    Personalização Avançada
+                  </div>
+                  
+                  <h2 className="text-3xl md:text-4xl font-bold mb-4">
+                    Ensine seus agentes sobre{' '}
+                    <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+                      seu contexto
+                    </span>
+                  </h2>
+                  
+                  <p className="text-lg text-slate-400 mb-6 leading-relaxed">
+                    Responda 5 perguntas rápidas e a IA cria um perfil personalizado para cada agente. 
+                    Eles aprendem sobre sua área de atuação, stakeholders VIP, preferências e prioridades.
+                  </p>
+                  
+                  <ul className="space-y-3">
+                    <li className="flex items-center gap-3 text-slate-300">
+                      <CheckCircle2 className="w-5 h-5 text-violet-400 flex-shrink-0" />
+                      Cada agente com contexto específico
+                    </li>
+                    <li className="flex items-center gap-3 text-slate-300">
+                      <CheckCircle2 className="w-5 h-5 text-violet-400 flex-shrink-0" />
+                      Análises mais precisas e relevantes
+                    </li>
+                    <li className="flex items-center gap-3 text-slate-300">
+                      <CheckCircle2 className="w-5 h-5 text-violet-400 flex-shrink-0" />
+                      Atualize ou refaça a qualquer momento
+                    </li>
+                  </ul>
+                </div>
+                
+                <div className="relative">
+                  {/* Mock teaching UI */}
+                  <div className="bg-[#12121a] rounded-2xl border border-white/10 p-6 shadow-2xl">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 bg-gradient-to-br from-violet-500 to-purple-600 rounded-lg">
+                        <GraduationCap className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-white">Ensinar Email Agent</p>
+                        <p className="text-xs text-slate-500">Pergunta 2 de 5</p>
+                      </div>
+                    </div>
+                    
+                    <div className="h-1.5 bg-white/10 rounded-full mb-6 overflow-hidden">
+                      <div className="h-full w-2/5 bg-gradient-to-r from-violet-500 to-purple-600 rounded-full" />
+                    </div>
+                    
+                    <p className="text-slate-300 mb-4">Quem são seus stakeholders mais importantes?</p>
+                    
+                    <div className="space-y-2">
+                      <div className="p-3 bg-violet-500/10 border border-violet-500/30 rounded-lg text-sm text-violet-300">
+                        Clientes e investidores
+                      </div>
+                      <div className="p-3 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-400">
+                        Equipe interna
+                      </div>
+                      <div className="p-3 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-400">
+                        Fornecedores e parceiros
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Floating badge */}
+                  <div className="absolute -bottom-4 -right-4 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full text-white text-sm font-semibold shadow-lg shadow-emerald-500/25">
+                    ~2 minutos
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Benefits Section */}
         <section className="py-24 px-4 border-t border-white/5">
           <div className="max-w-4xl mx-auto">
@@ -259,7 +368,7 @@ export function Login() {
               </span>
             </h2>
 
-            <div className="grid sm:grid-cols-2 gap-6">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {benefits.map((benefit, index) => (
                 <div
                   key={index}
