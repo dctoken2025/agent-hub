@@ -91,6 +91,42 @@ interface AIConfig {
   };
 }
 
+// Resposta da Admin API da Anthropic
+interface AnthropicCostReport {
+  data?: {
+    costs?: Array<{
+      model?: string;
+      cost_usd?: number;
+      input_tokens?: number;
+      output_tokens?: number;
+    }>;
+    total_cost_usd?: number;
+  };
+  error?: string;
+  period?: { start: string; end: string };
+}
+
+// Resposta da Admin API da OpenAI
+interface OpenAICostReport {
+  costs?: {
+    data?: Array<{
+      results?: Array<{
+        amount?: { value?: number };
+      }>;
+    }>;
+  };
+  usage?: {
+    data?: Array<{
+      results?: Array<{
+        input_tokens?: number;
+        output_tokens?: number;
+      }>;
+    }>;
+  };
+  error?: string;
+  period?: { start: string; end: string };
+}
+
 export function AIUsage() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<'stats' | 'config'>('stats');
@@ -110,6 +146,20 @@ export function AIUsage() {
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery({
     queryKey: ['ai-usage-stats'],
     queryFn: () => apiRequest<AIUsageStats>('/ai-usage/stats?days=7'),
+    enabled: view === 'stats',
+  });
+
+  // Custos reais da Anthropic (Admin API)
+  const { data: anthropicCosts, isLoading: anthropicLoading, refetch: refetchAnthropic } = useQuery({
+    queryKey: ['anthropic-costs'],
+    queryFn: () => apiRequest<AnthropicCostReport>('/ai-usage/anthropic'),
+    enabled: view === 'stats',
+  });
+
+  // Custos reais da OpenAI (Admin API)
+  const { data: openaiCosts, isLoading: openaiLoading, refetch: refetchOpenai } = useQuery({
+    queryKey: ['openai-costs'],
+    queryFn: () => apiRequest<OpenAICostReport>('/ai-usage/openai'),
     enabled: view === 'stats',
   });
 
@@ -386,6 +436,112 @@ export function AIUsage() {
                   </div>
                 </div>
               )}
+
+              {/* Custos Reais dos Providers */}
+              <div className="bg-card rounded-lg border p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-green-600" />
+                    Custos Reais dos Providers
+                  </h3>
+                  <button
+                    onClick={() => {
+                      refetchAnthropic();
+                      refetchOpenai();
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 text-xs bg-muted hover:bg-muted/80 rounded"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Atualizar
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Anthropic */}
+                  <div className="p-4 bg-purple-50 dark:bg-purple-950/30 rounded-xl border border-purple-200 dark:border-purple-800">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xl">🟣</span>
+                      <span className="font-semibold">Anthropic</span>
+                      {anthropicLoading && <Loader2 className="h-4 w-4 animate-spin text-purple-500" />}
+                    </div>
+                    
+                    {anthropicCosts?.error ? (
+                      <div className="text-sm text-amber-600 dark:text-amber-400 flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>{anthropicCosts.error}</span>
+                      </div>
+                    ) : anthropicCosts?.data ? (
+                      <div className="space-y-2">
+                        <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                          ${(anthropicCosts.data.total_cost_usd || 0).toFixed(4)}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Últimos 7 dias (via Admin API)
+                        </p>
+                        {anthropicCosts.data.costs && anthropicCosts.data.costs.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-800">
+                            <p className="text-xs font-medium mb-2">Por modelo:</p>
+                            {anthropicCosts.data.costs.map((c, i) => (
+                              <div key={i} className="flex justify-between text-xs">
+                                <span className="text-muted-foreground">{c.model}</span>
+                                <span className="font-medium">${(c.cost_usd || 0).toFixed(4)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : !anthropicLoading && (
+                      <p className="text-sm text-muted-foreground">
+                        Configure a Admin API Key para ver custos reais
+                      </p>
+                    )}
+                  </div>
+
+                  {/* OpenAI */}
+                  <div className="p-4 bg-green-50 dark:bg-green-950/30 rounded-xl border border-green-200 dark:border-green-800">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xl">🟢</span>
+                      <span className="font-semibold">OpenAI</span>
+                      {openaiLoading && <Loader2 className="h-4 w-4 animate-spin text-green-500" />}
+                    </div>
+                    
+                    {openaiCosts?.error ? (
+                      <div className="text-sm text-amber-600 dark:text-amber-400 flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>{openaiCosts.error}</span>
+                      </div>
+                    ) : openaiCosts?.costs ? (
+                      <div className="space-y-2">
+                        {(() => {
+                          // Calcula custo total
+                          const totalCost = openaiCosts.costs?.data?.reduce((acc, bucket) => {
+                            const bucketTotal = bucket.results?.reduce((sum, r) => sum + (r.amount?.value || 0), 0) || 0;
+                            return acc + bucketTotal;
+                          }, 0) || 0;
+                          return (
+                            <>
+                              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                ${totalCost.toFixed(4)}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Últimos 7 dias (via Admin API)
+                              </p>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ) : !openaiLoading && (
+                      <p className="text-sm text-muted-foreground">
+                        Configure a Admin API Key para ver custos reais
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground mt-4 text-center">
+                  💡 Os custos acima são obtidos diretamente das APIs oficiais dos providers
+                </p>
+              </div>
             </>
           ) : (
             <div className="bg-card rounded-lg border p-8 text-center">
@@ -675,3 +831,4 @@ export function AIUsage() {
     </div>
   );
 }
+
