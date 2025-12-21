@@ -217,6 +217,20 @@ export const aiUsageRoutes = async (app) => {
                 };
             }
             const totalData = await totalResponse.json();
+            // Log detalhado para debug
+            console.log('[AIUsage] Anthropic cost_report raw data:', JSON.stringify(totalData, null, 2));
+            // Calcula o total de custos para verificação
+            let debugTotal = 0;
+            if (totalData?.data && Array.isArray(totalData.data)) {
+                totalData.data.forEach((day) => {
+                    if (day.results && Array.isArray(day.results)) {
+                        day.results.forEach((r) => {
+                            debugTotal += parseFloat(r.amount || '0') || 0;
+                        });
+                    }
+                });
+            }
+            console.log('[AIUsage] Anthropic calculated total from API:', debugTotal);
             // Busca custos agrupados por API Key
             const byKeyResponse = await fetch(`https://api.anthropic.com/v1/organizations/cost_report?` +
                 `starting_at=${startDate.toISOString().split('T')[0]}&` +
