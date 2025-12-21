@@ -19,6 +19,7 @@ import {
   Search,
   ListChecks,
   BarChart3,
+  X,
 } from 'lucide-react';
 import { apiRequest } from '@/lib/utils';
 import { cn } from '@/lib/utils';
@@ -190,6 +191,180 @@ function InteractiveLoading() {
   );
 }
 
+// Modal de Loading para atualização
+function LoadingModal({ isOpen, onClose }: { isOpen: boolean; onClose?: () => void }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
+        onClick={onClose}
+      />
+      
+      {/* Modal */}
+      <div className="relative z-10 w-full max-w-lg mx-4 animate-in zoom-in-95 fade-in duration-300">
+        <div className="bg-background rounded-2xl shadow-2xl border overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-violet-500/10 to-purple-500/10">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-gradient-to-br from-violet-500 to-purple-600 rounded-lg">
+                <RefreshCw className="h-4 w-4 text-white animate-spin" />
+              </div>
+              <span className="font-semibold">Atualizando Briefing</span>
+            </div>
+            {onClose && (
+              <button 
+                onClick={onClose}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+              >
+                <X className="h-4 w-4 text-muted-foreground" />
+              </button>
+            )}
+          </div>
+          
+          {/* Content - Loading Interativo */}
+          <div className="p-2">
+            <InteractiveLoadingCompact />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Versão compacta do loading para o modal
+function InteractiveLoadingCompact() {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [tipIndex, setTipIndex] = useState(0);
+
+  const steps = [
+    { icon: Search, text: 'Buscando dados atualizados...', color: 'text-blue-500' },
+    { icon: Mail, text: 'Reanalisando emails...', color: 'text-cyan-500' },
+    { icon: ListChecks, text: 'Atualizando tarefas...', color: 'text-emerald-500' },
+    { icon: DollarSign, text: 'Recalculando financeiro...', color: 'text-amber-500' },
+    { icon: Brain, text: 'IA repriorizando itens...', color: 'text-violet-500' },
+    { icon: BarChart3, text: 'Gerando novo briefing...', color: 'text-purple-500' },
+  ];
+
+  const tips = [
+    '💡 O novo briefing incluirá as últimas atualizações',
+    '⚡ Novos emails e tarefas serão considerados',
+    '🎯 A priorização será recalculada do zero',
+    '📊 Alterações recentes impactam o resultado',
+    '✨ Quase lá! Finalizando análise...',
+  ];
+
+  useEffect(() => {
+    const stepInterval = setInterval(() => {
+      setCurrentStep((prev) => {
+        if (prev < steps.length - 1) return prev + 1;
+        return prev;
+      });
+    }, 2000);
+
+    const progressInterval = setInterval(() => {
+      setProgress((prev) => {
+        const target = ((currentStep + 1) / steps.length) * 100;
+        const increment = (target - prev) * 0.15;
+        if (Math.abs(target - prev) < 1) return target;
+        return prev + increment;
+      });
+    }, 80);
+
+    const tipInterval = setInterval(() => {
+      setTipIndex((prev) => (prev + 1) % tips.length);
+    }, 3000);
+
+    return () => {
+      clearInterval(stepInterval);
+      clearInterval(progressInterval);
+      clearInterval(tipInterval);
+    };
+  }, [currentStep, steps.length, tips.length]);
+
+  const CurrentIcon = steps[currentStep].icon;
+
+  return (
+    <div className="py-6 px-4">
+      <div className="space-y-5">
+        {/* Ícone central */}
+        <div className="flex justify-center">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 blur-lg opacity-40 animate-pulse scale-125" />
+            <div className="relative w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
+              <CurrentIcon className="h-8 w-8 text-white" />
+            </div>
+            <Sparkles className="absolute -top-1 -right-1 h-5 w-5 text-violet-400 animate-bounce" />
+          </div>
+        </div>
+
+        {/* Texto da etapa */}
+        <div className="text-center">
+          <p className={cn(
+            "text-base font-semibold transition-all duration-500",
+            steps[currentStep].color
+          )}>
+            {steps[currentStep].text}
+          </p>
+        </div>
+
+        {/* Barra de progresso */}
+        <div className="space-y-2">
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 rounded-full transition-all duration-300 ease-out relative"
+              style={{ width: `${progress}%` }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+            </div>
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Etapa {currentStep + 1} de {steps.length}</span>
+            <span>{Math.round(progress)}%</span>
+          </div>
+        </div>
+
+        {/* Indicadores das etapas - versão compacta */}
+        <div className="flex justify-center gap-1.5">
+          {steps.map((_, index) => (
+            <div
+              key={index}
+              className={cn(
+                "w-2 h-2 rounded-full transition-all duration-300",
+                index < currentStep 
+                  ? "bg-violet-500" 
+                  : index === currentStep 
+                    ? "bg-violet-500 ring-2 ring-violet-500/30 ring-offset-1 ring-offset-background" 
+                    : "bg-muted"
+              )}
+            />
+          ))}
+        </div>
+
+        {/* Dica */}
+        <div className="text-center">
+          <p className="text-sm text-muted-foreground transition-all duration-500">
+            {tips[tipIndex]}
+          </p>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        .animate-shimmer {
+          animation: shimmer 1.5s infinite;
+        }
+      `}</style>
+    </div>
+  );
+}
+
 // Tipos
 interface FocusItem {
   id: number;
@@ -249,8 +424,12 @@ export function Focus() {
   const briefing = focusData?.data;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <>
+      {/* Modal de Loading para Atualização */}
+      <LoadingModal isOpen={refreshMutation.isPending} />
+      
+      <div className="space-y-6">
+        {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl shadow-lg shadow-violet-500/25">
@@ -412,7 +591,8 @@ export function Focus() {
           )}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
