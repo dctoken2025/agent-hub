@@ -32,9 +32,7 @@ RUN npm ci --omit=dev
 
 # Configuração
 ENV NODE_ENV=production
-ENV PORT=3001
-
-EXPOSE 3001
+# PORT é definido pelo Railway automaticamente
 
 WORKDIR /app/apps/api
 
