@@ -123,6 +123,20 @@ export async function loadUserConfig(userId) {
                 'efetuar pagamento', 'segue boleto', 'anexo boleto',
             ],
         },
+        commercialAgent: {
+            enabled: true,
+            autoAnalyze: true,
+            maxEmailAgeDays: 7,
+            commercialKeywords: [
+                'cotação', 'orçamento', 'proposta', 'preço', 'pedido', 'comercial',
+                'sales inquiry', 'quotation request', 'pricing', 'order', 'proposal',
+                'oportunidade', 'lead', 'negócio', 'venda', 'cliente', 'parceiro',
+                'demonstração', 'demo', 'reunião', 'call', 'apresentação',
+            ],
+            urgentKeywords: [
+                'urgente', 'imediato', 'ASAP', 'agora', 'prioridade', 'critical', 'deadline',
+            ],
+        },
         notifications: {},
     };
     const db = getDb();
@@ -140,6 +154,7 @@ export async function loadUserConfig(userId) {
         const legalAgentFromDb = config.legalAgentConfig;
         const stablecoinAgentFromDb = config.stablecoinAgentConfig;
         const financialAgentFromDb = config.financialAgentConfig;
+        const commercialAgentFromDb = config.commercialAgentConfig;
         return {
             vipSenders: config.vipSenders || defaults.vipSenders,
             ignoreSenders: config.ignoreSenders || defaults.ignoreSenders,
@@ -158,6 +173,10 @@ export async function loadUserConfig(userId) {
             financialAgent: {
                 ...defaults.financialAgent,
                 ...financialAgentFromDb,
+            },
+            commercialAgent: {
+                ...defaults.commercialAgent,
+                ...commercialAgentFromDb,
             },
             notifications: config.notificationConfig || defaults.notifications,
         };
@@ -546,6 +565,7 @@ export const configRoutes = async (app) => {
             legalAgent: config.legalAgent,
             stablecoinAgent: config.stablecoinAgent,
             financialAgent: config.financialAgent,
+            commercialAgent: config.commercialAgent,
         };
     });
     // Atualiza configuração do Email Agent
@@ -653,6 +673,30 @@ export const configRoutes = async (app) => {
         }
         catch (error) {
             console.error('[Config] Erro ao salvar Financial Agent:', error);
+            return reply.status(500).send({
+                success: false,
+                error: error instanceof Error ? error.message : 'Erro ao salvar',
+            });
+        }
+    });
+    // Atualiza configurações do Commercial Agent
+    app.put('/agents/commercial', { preHandler: [authMiddleware] }, async (request, reply) => {
+        try {
+            const userId = request.user.id;
+            const currentConfig = await loadUserConfig(userId);
+            const updated = {
+                ...currentConfig.commercialAgent,
+                ...request.body,
+            };
+            await saveUserConfigValue(userId, { commercialAgentConfig: updated });
+            return {
+                success: true,
+                message: 'Configuração do Commercial Agent salva',
+                config: updated,
+            };
+        }
+        catch (error) {
+            console.error('[Config] Erro ao salvar Commercial Agent:', error);
             return reply.status(500).send({
                 success: false,
                 error: error instanceof Error ? error.message : 'Erro ao salvar',

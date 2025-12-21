@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { getDb, focusBriefings, classifiedEmails, actionItems, financialItems, legalAnalyses, userConfigs } from '../db/index.js';
+import { getDb, focusBriefings, classifiedEmails, actionItems, financialItems, legalAnalyses, commercialItems, userConfigs } from '../db/index.js';
 import { eq, and, gte, lte, or, desc } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
 import { getAIClient } from '@agent-hub/core';
@@ -9,6 +9,7 @@ import type {
   TaskData, 
   FinancialData, 
   LegalData,
+  CommercialData,
   FocusItem,
   UrgencyLevel,
 } from '@agent-hub/focus-agent';
@@ -120,7 +121,8 @@ async function generateBriefing(userId: string, scope: 'today' | 'week') {
     collectedData.emails.length + 
     collectedData.tasks.length + 
     collectedData.financialItems.length + 
-    collectedData.legalItems.length;
+    collectedData.legalItems.length +
+    collectedData.commercialItems.length;
 
   // Se não há itens, retorna briefing vazio
   if (totalItems === 0) {
@@ -251,6 +253,22 @@ async function collectData(userId: string, scope: 'today' | 'week'): Promise<Col
     .orderBy(desc(legalAnalyses.analyzedAt))
     .limit(10);
 
+  // Itens comerciais pendentes (cotações, leads, vendas)
+  const commercial = await db
+    .select()
+    .from(commercialItems)
+    .where(
+      and(
+        eq(commercialItems.userId, userId),
+        or(
+          eq(commercialItems.status, 'pending'),
+          eq(commercialItems.status, 'in_progress')
+        )
+      )
+    )
+    .orderBy(desc(commercialItems.createdAt))
+    .limit(20);
+
   // Carrega VIP senders do usuário
   const [userConfig] = await db
     .select({ vipSenders: userConfigs.vipSenders })
@@ -315,6 +333,24 @@ async function collectData(userId: string, scope: 'today' | 'week'): Promise<Col
       status: l.status || 'pending',
       parties: l.parties || undefined,
     })) as LegalData[],
+    commercialItems: commercial.map(c => ({
+      id: c.id,
+      type: c.type,
+      status: c.status,
+      priority: c.priority || 'normal',
+      companyName: c.clientCompany || undefined,
+      contactName: c.clientName || undefined,
+      contactEmail: c.clientEmail || undefined,
+      productService: c.productsServices || undefined,
+      requestedAmount: c.estimatedValue || undefined,
+      currency: c.currency || 'BRL',
+      deadline: c.deadlineDate || undefined,
+      details: c.description || undefined,
+      suggestedAction: c.suggestedAction || undefined,
+      emailSubject: c.emailSubject || undefined,
+      emailFrom: c.emailFrom || undefined,
+      analyzedAt: c.createdAt || undefined,
+    })) as CommercialData[],
   };
 }
 
@@ -408,6 +444,33 @@ function buildPrompt(data: CollectedData, scopeDescription: string, currentDate:
     });
   }
 
+  // Comercial
+  if (data.commercialItems.length > 0) {
+    prompt += `💼 OPORTUNIDADES COMERCIAIS (${data.commercialItems.length}):\n`;
+    data.commercialItems.forEach((item, i) => {
+      const amount = item.requestedAmount 
+        ? (item.requestedAmount / 100).toLocaleString('pt-BR', { style: 'currency', currency: item.currency || 'BRL' })
+        : 'Não informado';
+      const typeLabels: Record<string, string> = {
+        quotation_request: 'Cotação',
+        sales_inquiry: 'Consulta de Vendas',
+        order_confirmation: 'Confirmação de Pedido',
+        lead: 'Lead',
+        other: 'Outro',
+      };
+      prompt += `${i + 1}. [ID:${item.id}] ${typeLabels[item.type] || item.type}: ${item.companyName || item.contactName || 'Cliente'}\n`;
+      if (item.productService) prompt += `   Produto/Serviço: ${item.productService}\n`;
+      prompt += `   Valor Estimado: ${amount}\n`;
+      prompt += `   Prioridade: ${item.priority.toUpperCase()}\n`;
+      if (item.deadline) {
+        prompt += `   Prazo: ${new Date(item.deadline).toLocaleDateString('pt-BR')}\n`;
+      }
+      if (item.suggestedAction) prompt += `   Ação sugerida: ${item.suggestedAction}\n`;
+      if (item.priority === 'urgent' || item.priority === 'high') prompt += `   ⚠️ ALTA PRIORIDADE\n`;
+      prompt += `\n`;
+    });
+  }
+
   prompt += `\n=== INSTRUÇÕES ===\n`;
   prompt += `Analise todos os itens acima e gere:\n`;
   prompt += `1. Um briefing executivo em português (máximo 3 parágrafos)\n`;
@@ -432,7 +495,7 @@ Responda SEMPRE em JSON válido com esta estrutura exata:
   "items": [
     {
       "id": 123,
-      "type": "email|task|financial|legal",
+      "type": "email|task|financial|legal|commercial",
       "title": "Título curto",
       "description": "Descrição breve",
       "urgencyScore": 85,
@@ -494,6 +557,15 @@ function parseAIResponse(content: string, originalData: CollectedData, scope: 't
       if (item.type === 'legal' && original.overallRisk) {
         focusItem.riskLevel = original.overallRisk as string;
       }
+      if (item.type === 'commercial' && original.requestedAmount) {
+        focusItem.amount = original.requestedAmount as number;
+      }
+      if (item.type === 'commercial' && original.deadline) {
+        focusItem.deadline = new Date(original.deadline as string);
+      }
+      if (item.type === 'commercial' && (original.companyName || original.contactName)) {
+        focusItem.stakeholder = (original.companyName || original.contactName) as string;
+      }
 
       return focusItem;
     });
@@ -530,6 +602,8 @@ function findOriginalData(id: number, type: string, data: CollectedData): Record
       return (data.financialItems.find(f => f.id === id) || {}) as Record<string, unknown>;
     case 'legal':
       return (data.legalItems.find(l => l.id === id) || {}) as Record<string, unknown>;
+    case 'commercial':
+      return (data.commercialItems.find(c => c.id === id) || {}) as Record<string, unknown>;
     default:
       return {};
   }
@@ -601,6 +675,32 @@ function createFallbackBriefing(data: CollectedData, scope: 'today' | 'week') {
         urgencyReason: `Risco: ${legal.overallRisk}`,
         riskLevel: legal.overallRisk,
         originalData: legal as unknown as Record<string, unknown>,
+      });
+    });
+
+  // Itens comerciais
+  data.commercialItems
+    .filter(c => c.status === 'pending' || c.status === 'in_progress')
+    .forEach(commercial => {
+      const typeLabels: Record<string, string> = {
+        quotation_request: 'Cotação',
+        sales_inquiry: 'Consulta de Vendas',
+        order_confirmation: 'Confirmação de Pedido',
+        lead: 'Lead',
+        other: 'Outro',
+      };
+      items.push({
+        id: commercial.id,
+        type: 'commercial',
+        title: `${typeLabels[commercial.type] || commercial.type}: ${commercial.companyName || commercial.contactName || 'Cliente'}`,
+        description: commercial.productService?.substring(0, 100) || commercial.details?.substring(0, 100) || 'Oportunidade comercial',
+        urgencyScore: commercial.priority === 'urgent' ? 90 : commercial.priority === 'high' ? 75 : 50,
+        urgencyLevel: commercial.priority === 'urgent' ? 'critical' : commercial.priority === 'high' ? 'high' : 'medium',
+        urgencyReason: commercial.suggestedAction || `Oportunidade de ${typeLabels[commercial.type] || commercial.type}`,
+        amount: commercial.requestedAmount,
+        deadline: commercial.deadline,
+        stakeholder: commercial.companyName || commercial.contactName,
+        originalData: commercial as unknown as Record<string, unknown>,
       });
     });
 

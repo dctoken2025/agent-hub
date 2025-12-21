@@ -4,7 +4,7 @@ import { z } from 'zod';
 // Tipos de Itens para Análise
 // ===========================================
 
-export type FocusItemType = 'email' | 'task' | 'financial' | 'legal';
+export type FocusItemType = 'email' | 'task' | 'financial' | 'legal' | 'commercial';
 
 export type UrgencyLevel = 'critical' | 'high' | 'medium' | 'low';
 
@@ -57,6 +57,7 @@ export interface CollectedData {
   tasks: TaskData[];
   financialItems: FinancialData[];
   legalItems: LegalData[];
+  commercialItems: CommercialData[];
 }
 
 export interface EmailData {
@@ -116,6 +117,25 @@ export interface LegalData {
   parties?: string;
 }
 
+export interface CommercialData {
+  id: number;
+  type: string; // quotation_request, sales_inquiry, order_confirmation, lead, other
+  status: string; // pending, in_progress, won, lost, cancelled
+  priority: string; // urgent, high, normal, low
+  companyName?: string;
+  contactName?: string;
+  contactEmail?: string;
+  productService?: string;
+  requestedAmount?: number; // em centavos
+  currency: string;
+  deadline?: Date;
+  details?: string;
+  suggestedAction?: string;
+  emailSubject?: string;
+  emailFrom?: string;
+  analyzedAt?: Date;
+}
+
 // ===========================================
 // Configuração do Focus Agent
 // ===========================================
@@ -145,7 +165,7 @@ export const FocusAgentConfigSchema = z.object({
 
 export const FocusItemSchema = z.object({
   id: z.number(),
-  type: z.enum(['email', 'task', 'financial', 'legal']),
+  type: z.enum(['email', 'task', 'financial', 'legal', 'commercial']),
   title: z.string(),
   description: z.string(),
   urgencyScore: z.number(),

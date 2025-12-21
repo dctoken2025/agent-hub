@@ -20,6 +20,7 @@ import {
   ListChecks,
   BarChart3,
   X,
+  Briefcase,
 } from 'lucide-react';
 import { apiRequest } from '@/lib/utils';
 import { cn } from '@/lib/utils';
@@ -368,7 +369,7 @@ function InteractiveLoadingCompact() {
 // Tipos
 interface FocusItem {
   id: number;
-  type: 'email' | 'task' | 'financial' | 'legal';
+  type: 'email' | 'task' | 'financial' | 'legal' | 'commercial';
   title: string;
   description: string;
   urgencyScore: number;
@@ -598,7 +599,7 @@ export function Focus() {
 
 // Componente de item individual
 function FocusItemCard({ item }: { item: FocusItem }) {
-  const typeConfig = {
+  const typeConfig: Record<FocusItem['type'], { icon: typeof Mail; color: string; bgColor: string; label: string }> = {
     email: {
       icon: Mail,
       color: 'text-blue-500',
@@ -622,6 +623,12 @@ function FocusItemCard({ item }: { item: FocusItem }) {
       color: 'text-purple-500',
       bgColor: 'bg-purple-500/10',
       label: 'Jurídico',
+    },
+    commercial: {
+      icon: Briefcase,
+      color: 'text-indigo-500',
+      bgColor: 'bg-indigo-500/10',
+      label: 'Comercial',
     },
   };
 

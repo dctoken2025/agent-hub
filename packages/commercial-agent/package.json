@@ -1,0 +1,24 @@
+{
+  "name": "@agent-hub/commercial-agent",
+  "version": "0.0.1",
+  "description": "Agente comercial para análise de pedidos de cotação e vendas",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@agent-hub/core": "*",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
+

@@ -1,1 +1,1 @@
-{"version":3,"file":"agent-teaching.d.ts","sourceRoot":"","sources":["../../src/routes/agent-teaching.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,kBAAkB,EAAE,MAAM,SAAS,CAAC;AAyIlD,eAAO,MAAM,mBAAmB,EAAE,kBA2QjC,CAAC"}
+{"version":3,"file":"agent-teaching.d.ts","sourceRoot":"","sources":["../../src/routes/agent-teaching.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,kBAAkB,EAAE,MAAM,SAAS,CAAC;AA2JlD,eAAO,MAAM,mBAAmB,EAAE,kBA2QjC,CAAC"}

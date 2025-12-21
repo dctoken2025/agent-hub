@@ -17,6 +17,20 @@ import {
 import { useState, useEffect, useRef } from 'react';
 import { cn, apiRequest } from '@/lib/utils';
 
+// Helper para traduzir nomes de agentes
+function translateAgentName(name: string): string {
+  const translations: Record<string, string> = {
+    'Email Agent': 'Agente de Email',
+    'Legal Agent': 'Agente Jurídico',
+    'Financial Agent': 'Agente Financeiro',
+    'Stablecoin Agent': 'Agente Stablecoin',
+    'Task Agent': 'Agente de Tarefas',
+    'Focus Agent': 'Agente de Foco',
+    'Commercial Agent': 'Agente Comercial',
+  };
+  return translations[name] || name;
+}
+
 interface AgentLog {
   id: number;
   agentId: string;
@@ -334,7 +348,7 @@ export function Logs() {
                       [{formatActivityTime(log.createdAt)}]
                     </span>
                     <span className={cn("shrink-0", getAgentColor(log.agentId))}>
-                      [{log.agentName}]
+                      [{translateAgentName(log.agentName)}]
                     </span>
                     <span className={cn("flex-1", getLevelColor(log.level))}>
                       {log.emoji && <span className="mr-1">{log.emoji}</span>}
@@ -386,7 +400,7 @@ export function Logs() {
                         <div className="flex items-center gap-2">
                           <span className="flex items-center gap-1.5 font-medium">
                             {getAgentIcon(log.agentId)}
-                            {log.agentName || log.agentId}
+                            {translateAgentName(log.agentName) || log.agentId}
                           </span>
                           <span className={cn(
                             "px-2 py-0.5 rounded text-xs font-medium",
@@ -400,7 +414,7 @@ export function Logs() {
 
                         {/* Details */}
                         <div className="mt-1 text-sm text-muted-foreground">
-                          {/* Email Agent */}
+                          {/* Agente de Email */}
                           {log.agentId.includes('email') && (
                             <>
                               {log.processedCount > 0 ? (
@@ -425,7 +439,7 @@ export function Logs() {
                               )}
                             </>
                           )}
-                          {/* Legal Agent */}
+                          {/* Agente Jurídico */}
                           {log.agentId.includes('legal') && (
                             <>
                               {log.processedCount > 0 ? (
@@ -435,7 +449,7 @@ export function Logs() {
                               )}
                             </>
                           )}
-                          {/* Financial Agent */}
+                          {/* Agente Financeiro */}
                           {log.agentId.includes('financial') && (
                             <>
                               {log.processedCount > 0 || (log.details?.itemsFound && log.details.itemsFound > 0) ? (
@@ -448,7 +462,7 @@ export function Logs() {
                               )}
                             </>
                           )}
-                          {/* Stablecoin Agent */}
+                          {/* Agente Stablecoin */}
                           {log.agentId.includes('stablecoin') && (
                             <>
                               {log.processedCount > 0 ? (
@@ -458,7 +472,7 @@ export function Logs() {
                               )}
                             </>
                           )}
-                          {/* Task Agent */}
+                          {/* Agente de Tarefas */}
                           {log.agentId.includes('task') && (
                             <>
                               {log.processedCount > 0 ? (

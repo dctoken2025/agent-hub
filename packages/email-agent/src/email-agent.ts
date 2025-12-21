@@ -2,6 +2,7 @@ import { Agent, type AgentConfig, type AgentResult, Notifier } from '@agent-hub/
 import { LegalAgent, type LegalAgentConfig, type ContractAnalysis } from '@agent-hub/legal-agent';
 import { FinancialAgent, type FinancialAgentConfig, type FinancialItem } from '@agent-hub/financial-agent';
 import { TaskAgent, type ActionItem } from '@agent-hub/task-agent';
+import { CommercialAgent, type CommercialItem } from '@agent-hub/commercial-agent';
 import { GmailClient } from './gmail-client.js';
 import { EmailClassifier, type ClassificationRule } from './email-classifier.js';
 import type { Email, EmailAgentConfig, ClassifiedEmail, EmailPriority } from './types.js';
@@ -22,6 +23,8 @@ export interface EmailAgentResult {
   financialItems: FinancialItem[];
   actionItemsDetected: number;
   actionItems: ActionItem[];
+  commercialItemsDetected: number;
+  commercialItems: CommercialItem[];
 }
 
 /**
@@ -36,7 +39,8 @@ export type EmailProgressEvent =
   | { type: 'batch_processed'; count: number; total: number }
   | { type: 'processing_financial'; emailSubject: string }
   | { type: 'processing_legal'; emailSubject: string }
-  | { type: 'processing_tasks'; emailSubject: string };
+  | { type: 'processing_tasks'; emailSubject: string }
+  | { type: 'processing_commercial'; emailSubject: string };
 
 export type ProgressCallback = (event: EmailProgressEvent) => void | Promise<void>;
 export type EmailSaveCallback = (emails: ClassifiedEmail[]) => Promise<void>;
@@ -55,6 +59,7 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
   private legalAgent?: LegalAgent;
   private financialAgent?: FinancialAgent;
   private taskAgent?: TaskAgent;
+  private commercialAgent?: CommercialAgent;
   private processedLabelId?: string;
   
   // Callbacks de progresso e salvamento
@@ -160,6 +165,14 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
   setTaskAgent(taskAgent: TaskAgent): void {
     this.taskAgent = taskAgent;
     console.log('[EmailAgent] Task Agent externo injetado');
+  }
+
+  /**
+   * Injeta um Commercial Agent externo para análise de emails comerciais.
+   */
+  setCommercialAgent(commercialAgent: CommercialAgent): void {
+    this.commercialAgent = commercialAgent;
+    console.log('[EmailAgent] Commercial Agent externo injetado');
   }
 
   /**
@@ -294,9 +307,11 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
       const legalAnalyses: ContractAnalysis[] = [];
       const financialItems: FinancialItem[] = [];
       const actionItems: ActionItem[] = [];
+      const commercialItems: CommercialItem[] = [];
       let contractsDetected = 0;
       let financialItemsDetected = 0;
       let actionItemsDetected = 0;
+      let commercialItemsDetected = 0;
 
       const counts: EmailAgentResult['classifications'] = {
         urgent: 0,
@@ -398,6 +413,21 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
             }
           }
 
+          // Verifica se email é comercial (cotações, propostas, vendas)
+          if (this.isCommercialEmail(email)) {
+            console.log(`[EmailAgent] 💼 Email comercial detectado: ${email.subject}`);
+            if (this.onProgress) {
+              await this.onProgress({ type: 'processing_commercial', emailSubject: email.subject.substring(0, 50) });
+            }
+
+            // Processa com Commercial Agent
+            const items = await this.processWithCommercialAgent(email);
+            if (items.length > 0) {
+              commercialItems.push(...items);
+              commercialItemsDetected += items.length;
+            }
+          }
+
           // Adiciona label "AgentHub-Processado" para não processar novamente
           // NÃO marca como lido - mantém o estado original no Gmail
           try {
@@ -441,6 +471,8 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
         financialItems,
         actionItemsDetected,
         actionItems,
+        commercialItemsDetected,
+        commercialItems,
       };
 
       // Atualiza lastProcessedAt com a data/hora atual (timezone Brasil)
@@ -598,6 +630,53 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
   }
 
   /**
+   * Verifica se um email parece ser comercial (cotações, propostas, vendas).
+   */
+  private isCommercialEmail(email: Email): boolean {
+    // Se Commercial Agent está injetado, usa a lógica dele
+    if (this.commercialAgent) {
+      return this.commercialAgent.isCommercialEmail(email.subject, email.body);
+    }
+
+    const content = `${email.subject} ${email.body}`.toLowerCase();
+    
+    const commercialIndicators = [
+      // Cotações e orçamentos
+      'cotação', 'orçamento', 'quote', 'quotation', 'proposta comercial',
+      'pedido de preço', 'solicitação de preço', 'price request',
+      'quanto custa', 'qual o valor', 'preço de',
+      // Vendas e pedidos
+      'pedido', 'order', 'compra', 'purchase', 'aquisição',
+      'gostaria de comprar', 'interesse em adquirir', 'preciso de',
+      'queremos contratar', 'interesse em contratar',
+      // Negociação
+      'negociação', 'condições comerciais', 'desconto', 'prazo de pagamento',
+      'parcelamento', 'forma de pagamento', 'condições especiais',
+      // Licitação
+      'licitação', 'pregão', 'tomada de preços', 'concorrência',
+      'edital', 'certame', 'processo licitatório',
+      // Oportunidade
+      'parceria', 'distribuição', 'representação', 'revenda',
+    ];
+
+    // Verifica se tem indicadores comerciais
+    const hasCommercialIndicator = commercialIndicators.some(indicator => 
+      content.includes(indicator)
+    );
+
+    // Também considera emails de remetentes comerciais conhecidos
+    const commercialSenders = [
+      'comercial@', 'vendas@', 'sales@', 'compras@', 'procurement@',
+      'purchasing@', 'cotacao@', 'orcamento@', 'licitacao@',
+    ];
+    
+    const fromEmail = email.from.email.toLowerCase();
+    const isFromCommercialSender = commercialSenders.some(s => fromEmail.includes(s));
+
+    return hasCommercialIndicator || isFromCommercialSender;
+  }
+
+  /**
    * Verifica se um email contém action items (tarefas, perguntas, pendências).
    */
   private hasActionItems(email: Email): boolean {
@@ -665,6 +744,39 @@ export class EmailAgent extends Agent<void, EmailAgentResult> {
       return [];
     } catch (error) {
       console.error('[EmailAgent] Erro ao processar com Task Agent:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Processa email com Commercial Agent para análise de oportunidades comerciais.
+   */
+  private async processWithCommercialAgent(email: Email): Promise<CommercialItem[]> {
+    console.log(`[EmailAgent] 💼 Iniciando processamento com Commercial Agent para: ${email.subject}`);
+
+    if (!this.commercialAgent) {
+      console.log('[EmailAgent] ⚠️ Commercial Agent não inicializado');
+      return [];
+    }
+
+    try {
+      const result = await this.commercialAgent.execute({
+        emailId: email.id,
+        threadId: email.threadId,
+        emailSubject: email.subject,
+        emailBody: email.body,
+        emailFrom: email.from.email,
+        emailDate: email.date,
+      });
+
+      if (result.success && result.data && result.data.items.length > 0) {
+        console.log(`[EmailAgent] ✅ ${result.data.items.length} item(ns) comercial(is) extraído(s)`);
+        return result.data.items;
+      }
+
+      return [];
+    } catch (error) {
+      console.error('[EmailAgent] Erro ao processar com Commercial Agent:', error);
       return [];
     }
   }

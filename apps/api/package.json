@@ -16,8 +16,10 @@
   },
   "dependencies": {
     "@agent-hub/core": "*",
+    "@agent-hub/commercial-agent": "*",
     "@agent-hub/email-agent": "*",
     "@agent-hub/financial-agent": "*",
+    "@agent-hub/focus-agent": "*",
     "@agent-hub/legal-agent": "*",
     "@agent-hub/stablecoin-agent": "*",
     "@agent-hub/task-agent": "*",

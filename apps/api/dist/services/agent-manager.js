@@ -10,10 +10,11 @@ import { LegalAgent } from '@agent-hub/legal-agent';
 import { FinancialAgent } from '@agent-hub/financial-agent';
 import { TaskAgent } from '@agent-hub/task-agent';
 import { StablecoinAgent } from '@agent-hub/stablecoin-agent';
+import { CommercialAgent } from '@agent-hub/commercial-agent';
 import { getDb, users, userConfigs, agentLogs, stablecoins, stablecoinEvents, stablecoinAnomalies, supplySnapshots, aiUsageLogs, focusBriefings } from '../db/index.js';
 import { eq } from 'drizzle-orm';
 import { loadUserConfig, loadGlobalConfig } from '../routes/config.js';
-import { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase, saveActionItemsToDatabase } from '../routes/emails.js';
+import { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase, saveActionItemsToDatabase, saveCommercialItemsToDatabase } from '../routes/emails.js';
 import { createAgentLogger } from './activity-logger.js';
 /**
  * Invalida o cache de briefings de foco de um usuário.
@@ -129,7 +130,7 @@ export class AgentManager {
                 };
                 const emailAgent = new EmailAgent({
                     id: `email-agent-${userId}`,
-                    name: 'Email Agent',
+                    name: 'Agente de Email',
                     description: 'Agente de classificação e triagem de emails',
                     enabled: true,
                     schedule: {
@@ -184,7 +185,7 @@ export class AgentManager {
                 };
                 const legalAgent = new LegalAgent({
                     id: `legal-agent-${userId}`,
-                    name: 'Legal Agent',
+                    name: 'Agente Jurídico',
                     description: 'Agente de análise de contratos e documentos legais',
                     enabled: true,
                     schedule: {
@@ -218,7 +219,7 @@ export class AgentManager {
                 };
                 const financialAgent = new FinancialAgent({
                     id: `financial-agent-${userId}`,
-                    name: 'Financial Agent',
+                    name: 'Agente Financeiro',
                     description: 'Agente de análise de cobranças e pagamentos',
                     enabled: true,
                     schedule: {
@@ -250,7 +251,7 @@ export class AgentManager {
         try {
             const taskAgent = new TaskAgent({
                 id: `task-agent-${userId}`,
-                name: 'Task Agent',
+                name: 'Agente de Tarefas',
                 description: 'Agente de extração de tarefas e action items',
                 enabled: true,
                 schedule: {
@@ -273,6 +274,45 @@ export class AgentManager {
         }
         catch (error) {
             console.error(`[AgentManager] Erro ao inicializar Task Agent:`, error);
+        }
+        // ===========================================
+        // Inicializa Commercial Agent
+        // ===========================================
+        if (userConfig.commercialAgent.enabled && globalConfig.anthropic.apiKey) {
+            try {
+                // Define API Key da Anthropic
+                process.env.ANTHROPIC_API_KEY = globalConfig.anthropic.apiKey;
+                const commercialConfig = {
+                    commercialKeywords: userConfig.commercialAgent.commercialKeywords,
+                    vipClients: [], // Pode ser configurado futuramente
+                    productsServices: [], // Pode ser configurado futuramente
+                    highValueThreshold: 10000000, // R$ 100.000 em centavos (padrão)
+                    urgentDaysBeforeDeadline: 2,
+                    customContext: userConfig.commercialAgent.customContext,
+                };
+                const commercialAgent = new CommercialAgent({
+                    id: `commercial-agent-${userId}`,
+                    name: 'Agente Comercial',
+                    description: 'Agente de análise de cotações e oportunidades comerciais',
+                    enabled: true,
+                    schedule: {
+                        type: 'manual',
+                    },
+                    userId, // Rastreamento de uso de AI por usuário
+                }, commercialConfig, notifier);
+                // Registra eventos para logging
+                this.setupAgentLogging(commercialAgent, userId);
+                scheduler.register(commercialAgent);
+                agentSet.commercialAgent = commercialAgent;
+                // Injeta no Email Agent para que use a mesma instância com logging
+                if (agentSet.emailAgent) {
+                    agentSet.emailAgent.setCommercialAgent(commercialAgent);
+                }
+                console.log(`[AgentManager] ✅ Commercial Agent iniciado para usuário ${userId}`);
+            }
+            catch (error) {
+                console.error(`[AgentManager] ❌ Erro ao inicializar Commercial Agent:`, error);
+            }
         }
         // ===========================================
         // Inicializa Stablecoin Agent
@@ -300,7 +340,7 @@ export class AgentManager {
                     };
                     const stablecoinAgent = new StablecoinAgent({
                         id: `stablecoin-agent-${userId}`,
-                        name: 'Stablecoin Agent',
+                        name: 'Agente Stablecoin',
                         description: 'Agente de monitoramento de stablecoins',
                         enabled: true,
                         schedule: {
@@ -431,6 +471,9 @@ export class AgentManager {
                 case 'processing_tasks':
                     logger.info(`Extraindo tarefas: ${event.emailSubject}...`, '📋');
                     break;
+                case 'processing_commercial':
+                    logger.info(`Analisando oportunidade comercial: ${event.emailSubject}...`, '💼');
+                    break;
             }
         };
         // Callback de salvamento progressivo - salva emails conforme são classificados
@@ -534,6 +577,28 @@ export class AgentManager {
                         }
                         catch (logError) {
                             console.error('[AgentManager] Erro ao registrar log do Task Agent:', logError);
+                        }
+                    }
+                    if (emailData?.commercialItems && emailData.commercialItems.length > 0) {
+                        await saveCommercialItemsToDatabase(emailData.commercialItems, userId);
+                        // Registra log separado para o Commercial Agent
+                        try {
+                            await db.insert(agentLogs).values({
+                                userId,
+                                agentId: `commercial-agent-${userId}`,
+                                agentName: 'Commercial Agent',
+                                eventType: 'completed',
+                                success: true,
+                                duration: 0, // Não temos o tempo exato
+                                processedCount: emailData.commercialItems.length,
+                                details: {
+                                    commercialItemsExtracted: emailData.commercialItems.length,
+                                    types: emailData.commercialItems.map((item) => item.type),
+                                },
+                            });
+                        }
+                        catch (logError) {
+                            console.error('[AgentManager] Erro ao registrar log do Commercial Agent:', logError);
                         }
                     }
                     // Invalida cache de briefings de foco quando há novos dados

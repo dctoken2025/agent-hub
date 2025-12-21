@@ -29,6 +29,20 @@ import {
 } from 'lucide-react';
 import { cn, apiRequest } from '@/lib/utils';
 
+// Helper para traduzir nomes de agentes
+function translateAgentName(name: string): string {
+  const translations: Record<string, string> = {
+    'Email Agent': 'Agente de Email',
+    'Legal Agent': 'Agente Jurídico',
+    'Financial Agent': 'Agente Financeiro',
+    'Stablecoin Agent': 'Agente Stablecoin',
+    'Task Agent': 'Agente de Tarefas',
+    'Focus Agent': 'Agente de Foco',
+    'Commercial Agent': 'Agente Comercial',
+  };
+  return translations[name] || name;
+}
+
 interface UserStats {
   emailsProcessed: number;
   legalAnalyses: number;
@@ -539,7 +553,7 @@ export function Users() {
                               <div key={agent.agentType} className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-800">
                                 <CheckCircle2 className="w-4 h-4 text-green-500" />
                                 <span className="font-medium text-green-700 dark:text-green-300">
-                                  {agent.agentName}
+                                  {translateAgentName(agent.agentName)}
                                 </span>
                               </div>
                             ))}
@@ -568,7 +582,7 @@ export function Users() {
                               <div key={activity.agentId} className="flex items-center justify-between p-2 bg-card rounded-lg border">
                                 <div className="flex items-center gap-2">
                                   <Bot className="w-4 h-4 text-primary" />
-                                  <span className="font-medium text-sm">{activity.agentName}</span>
+                                  <span className="font-medium text-sm">{translateAgentName(activity.agentName)}</span>
                                 </div>
                                 <div className="flex items-center gap-3 text-xs">
                                   <span className="text-green-600">{activity.successful}✓</span>

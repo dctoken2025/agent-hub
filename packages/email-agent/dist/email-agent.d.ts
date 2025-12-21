@@ -2,6 +2,7 @@ import { Agent, type AgentConfig, type AgentResult, Notifier } from '@agent-hub/
 import { LegalAgent, type ContractAnalysis } from '@agent-hub/legal-agent';
 import { FinancialAgent, type FinancialItem } from '@agent-hub/financial-agent';
 import { TaskAgent, type ActionItem } from '@agent-hub/task-agent';
+import { CommercialAgent, type CommercialItem } from '@agent-hub/commercial-agent';
 import { type ClassificationRule } from './email-classifier.js';
 import type { EmailAgentConfig, ClassifiedEmail } from './types.js';
 export interface EmailAgentResult {
@@ -20,6 +21,8 @@ export interface EmailAgentResult {
     financialItems: FinancialItem[];
     actionItemsDetected: number;
     actionItems: ActionItem[];
+    commercialItemsDetected: number;
+    commercialItems: CommercialItem[];
 }
 /**
  * Tipos de eventos de progresso do Email Agent
@@ -58,6 +61,9 @@ export type EmailProgressEvent = {
 } | {
     type: 'processing_tasks';
     emailSubject: string;
+} | {
+    type: 'processing_commercial';
+    emailSubject: string;
 };
 export type ProgressCallback = (event: EmailProgressEvent) => void | Promise<void>;
 export type EmailSaveCallback = (emails: ClassifiedEmail[]) => Promise<void>;
@@ -69,6 +75,7 @@ export declare class EmailAgent extends Agent<void, EmailAgentResult> {
     private legalAgent?;
     private financialAgent?;
     private taskAgent?;
+    private commercialAgent?;
     private processedLabelId?;
     onProgress?: ProgressCallback;
     onEmailsClassified?: EmailSaveCallback;
@@ -87,6 +94,10 @@ export declare class EmailAgent extends Agent<void, EmailAgentResult> {
      * Injeta um Task Agent externo para análise de action items.
      */
     setTaskAgent(taskAgent: TaskAgent): void;
+    /**
+     * Injeta um Commercial Agent externo para análise de emails comerciais.
+     */
+    setCommercialAgent(commercialAgent: CommercialAgent): void;
     /**
      * Define regras de classificação personalizadas.
      */
@@ -116,6 +127,10 @@ export declare class EmailAgent extends Agent<void, EmailAgentResult> {
      */
     private isFinancialEmail;
     /**
+     * Verifica se um email parece ser comercial (cotações, propostas, vendas).
+     */
+    private isCommercialEmail;
+    /**
      * Verifica se um email contém action items (tarefas, perguntas, pendências).
      */
     private hasActionItems;
@@ -123,6 +138,10 @@ export declare class EmailAgent extends Agent<void, EmailAgentResult> {
      * Processa email com Task Agent para extração de action items.
      */
     private processWithTaskAgent;
+    /**
+     * Processa email com Commercial Agent para análise de oportunidades comerciais.
+     */
+    private processWithCommercialAgent;
     /**
      * Processa email com Financial Agent para análise de cobranças.
      * MELHORADO: Agora baixa e envia o conteúdo dos anexos (PDFs de boletos, etc.)

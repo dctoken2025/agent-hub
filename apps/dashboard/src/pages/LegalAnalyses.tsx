@@ -19,7 +19,9 @@ import {
   Trash2,
   Check,
   RotateCcw,
-  PlayCircle
+  PlayCircle,
+  Mail,
+  ExternalLink
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn, apiRequest } from '@/lib/utils';
@@ -272,7 +274,7 @@ export function LegalAnalyses() {
             Análises Jurídicas
           </h2>
           <p className="text-muted-foreground">
-            Contratos e documentos analisados automaticamente pelo Legal Agent
+            Contratos e documentos analisados automaticamente pelo Agente Jurídico
           </p>
         </div>
         <div className="flex gap-2">
@@ -1070,12 +1072,27 @@ export function LegalAnalyses() {
                 )}
               </div>
               
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
-              >
-                Fechar
-              </button>
+              <div className="flex gap-2">
+                {/* Botão Ver Email Original */}
+                {selectedAnalysis.emailId && (
+                  <a
+                    href={`https://mail.google.com/mail/u/0/#inbox/${selectedAnalysis.threadId || selectedAnalysis.emailId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors flex items-center gap-2"
+                  >
+                    <Mail className="h-4 w-4" />
+                    Ver Email
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
           </div>
         </div>

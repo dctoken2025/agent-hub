@@ -54,6 +54,14 @@ export interface FinancialAgentSettings {
     financialKeywords: string[];
     customContext?: string;
 }
+export interface CommercialAgentSettings {
+    enabled: boolean;
+    autoAnalyze: boolean;
+    maxEmailAgeDays: number;
+    commercialKeywords: string[];
+    urgentKeywords: string[];
+    customContext?: string;
+}
 export interface NotificationSettings {
     slackWebhookUrl?: string;
     telegramBotToken?: string;
@@ -89,6 +97,7 @@ export declare function loadUserConfig(userId: string): Promise<{
     legalAgent: LegalAgentSettings;
     stablecoinAgent: StablecoinAgentSettings;
     financialAgent: FinancialAgentSettings;
+    commercialAgent: CommercialAgentSettings;
     notifications: NotificationSettings;
 }>;
 export declare function saveGlobalConfigValue(key: string, value: string, isSecret?: boolean): Promise<void>;
@@ -99,6 +108,7 @@ export declare function saveUserConfigValue(userId: string, updates: Partial<{
     legalAgentConfig: LegalAgentSettings;
     stablecoinAgentConfig: StablecoinAgentSettings;
     financialAgentConfig: FinancialAgentSettings;
+    commercialAgentConfig: CommercialAgentSettings;
     notificationConfig: NotificationSettings;
 }>): Promise<void>;
 export declare function loadConfig(userId?: string): Promise<{

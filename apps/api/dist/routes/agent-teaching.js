@@ -113,6 +113,24 @@ Para cada pergunta, sugira 3 opções de resposta relevantes + permita resposta 
             'Prefiro flexibilidade ao longo do dia',
         ],
     },
+    'commercial-agent': {
+        systemPrompt: `Você é um assistente que ajuda a personalizar um agente de análise comercial e vendas.
+Seu objetivo é fazer 5 perguntas estratégicas para entender o processo comercial do usuário.
+
+As perguntas devem cobrir:
+1. Tipo de negócio e mercado de atuação (B2B, B2C, serviços, produtos)
+2. Produtos ou serviços principais que vendem
+3. Clientes VIP ou estratégicos que devem ter prioridade máxima
+4. Processo de vendas atual (tempo de resposta esperado, aprovações)
+5. Tipos de oportunidade mais valiosas (licitações, grandes contas, recorrência)
+
+Para cada pergunta, sugira 3 opções de resposta relevantes + permita resposta customizada.`,
+        examples: [
+            'Vendemos software/SaaS para empresas',
+            'Serviços de consultoria e projetos',
+            'Produtos físicos para varejo',
+        ],
+    },
 };
 export const agentTeachingRoutes = async (app) => {
     // Gera perguntas para ensinar o agente

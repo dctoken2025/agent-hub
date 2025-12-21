@@ -9,11 +9,58 @@ import {
   Clock,
   AlertTriangle,
   GraduationCap,
-  Brain
+  Brain,
+  Mail,
+  Scale,
+  DollarSign,
+  Coins,
+  CheckSquare,
+  Target,
+  Briefcase,
+  type LucideIcon
 } from 'lucide-react';
 import { cn, apiRequest } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { TeachAgentModal } from '@/components/TeachAgentModal';
+
+// Configuração de ícones e cores por agente
+const agentConfig: Record<string, { icon: LucideIcon; color: string; bgColor: string }> = {
+  'email-agent': { 
+    icon: Mail, 
+    color: 'text-blue-600 dark:text-blue-400', 
+    bgColor: 'bg-blue-100 dark:bg-blue-900/50' 
+  },
+  'legal-agent': { 
+    icon: Scale, 
+    color: 'text-purple-600 dark:text-purple-400', 
+    bgColor: 'bg-purple-100 dark:bg-purple-900/50' 
+  },
+  'financial-agent': { 
+    icon: DollarSign, 
+    color: 'text-green-600 dark:text-green-400', 
+    bgColor: 'bg-green-100 dark:bg-green-900/50' 
+  },
+  'stablecoin-agent': { 
+    icon: Coins, 
+    color: 'text-amber-600 dark:text-amber-400', 
+    bgColor: 'bg-amber-100 dark:bg-amber-900/50' 
+  },
+  'task-agent': { 
+    icon: CheckSquare, 
+    color: 'text-cyan-600 dark:text-cyan-400', 
+    bgColor: 'bg-cyan-100 dark:bg-cyan-900/50' 
+  },
+  'focus-agent': { 
+    icon: Target, 
+    color: 'text-rose-600 dark:text-rose-400', 
+    bgColor: 'bg-rose-100 dark:bg-rose-900/50' 
+  },
+  'commercial-agent': { 
+    icon: Briefcase, 
+    color: 'text-indigo-600 dark:text-indigo-400', 
+    bgColor: 'bg-indigo-100 dark:bg-indigo-900/50' 
+  },
+};
 
 interface AgentInfo {
   config: {
@@ -46,7 +93,7 @@ export function Agents() {
   const { data: contextsData } = useQuery({
     queryKey: ['agent-contexts'],
     queryFn: async () => {
-      const agentIds = ['email-agent', 'legal-agent', 'financial-agent', 'stablecoin-agent', 'task-agent', 'focus-agent'];
+      const agentIds = ['email-agent', 'legal-agent', 'financial-agent', 'stablecoin-agent', 'task-agent', 'focus-agent', 'commercial-agent'];
       const results = await Promise.all(
         agentIds.map(id => 
           apiRequest<{ agentId: string; hasContext: boolean }>(`/agent-teaching/context/${id}`)
@@ -219,9 +266,15 @@ export function Agents() {
               {/* Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-3 bg-primary/10 rounded-lg">
-                    <Bot className="h-6 w-6 text-primary" />
-                  </div>
+                  {(() => {
+                    const config = agentConfig[agent.config.id] || { icon: Bot, color: 'text-primary', bgColor: 'bg-primary/10' };
+                    const IconComponent = config.icon;
+                    return (
+                      <div className={cn("p-3 rounded-lg", config.bgColor)}>
+                        <IconComponent className={cn("h-6 w-6", config.color)} />
+                      </div>
+                    );
+                  })()}
                   <div>
                     <h3 className="font-semibold">{agent.config.name}</h3>
                     <p className="text-sm text-muted-foreground">

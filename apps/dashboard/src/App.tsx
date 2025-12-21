@@ -9,6 +9,7 @@ import { Agents } from './pages/Agents';
 import { Logs } from './pages/Logs';
 import { LegalAnalyses } from './pages/LegalAnalyses';
 import Financial from './pages/Financial';
+import Commercial from './pages/Commercial';
 import { Tasks } from './pages/Tasks';
 import { StablecoinMonitor } from './pages/StablecoinMonitor';
 import { Settings } from './pages/Settings';
@@ -130,6 +131,7 @@ function AppContent() {
             <Route path="/logs" component={Logs} />
             <Route path="/legal" component={LegalAnalyses} />
             <Route path="/financial" component={Financial} />
+            <Route path="/commercial" component={Commercial} />
             <Route path="/tasks" component={Tasks} />
             <Route path="/stablecoins" component={StablecoinMonitor} />
             {isAdmin && <Route path="/users" component={Users} />}

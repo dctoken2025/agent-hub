@@ -14,6 +14,7 @@ export type {
   TaskData,
   FinancialData,
   LegalData,
+  CommercialData,
 } from './types.js';
 
 // Schemas

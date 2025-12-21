@@ -26,5 +26,8 @@ export type {
 // Re-export from legal-agent for convenience
 export type { ContractAnalysis } from '@agent-hub/legal-agent';
 
+// Re-export from commercial-agent for convenience
+export type { CommercialItem } from '@agent-hub/commercial-agent';
+
 // Schemas
 export { EmailAgentConfigSchema, EmailClassificationSchema } from './types.js';

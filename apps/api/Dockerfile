@@ -34,6 +34,7 @@ COPY --from=builder /app/packages/financial-agent/package.json ./packages/financ
 COPY --from=builder /app/packages/task-agent/package.json ./packages/task-agent/package.json
 COPY --from=builder /app/packages/stablecoin-agent/package.json ./packages/stablecoin-agent/package.json
 COPY --from=builder /app/packages/focus-agent/package.json ./packages/focus-agent/package.json
+COPY --from=builder /app/packages/commercial-agent/package.json ./packages/commercial-agent/package.json
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 
 # Copy built dist folders
@@ -44,10 +45,11 @@ COPY --from=builder /app/packages/financial-agent/dist ./packages/financial-agen
 COPY --from=builder /app/packages/task-agent/dist ./packages/task-agent/dist
 COPY --from=builder /app/packages/stablecoin-agent/dist ./packages/stablecoin-agent/dist
 COPY --from=builder /app/packages/focus-agent/dist ./packages/focus-agent/dist
+COPY --from=builder /app/packages/commercial-agent/dist ./packages/commercial-agent/dist
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
 # Install production dependencies only
-RUN npm ci --omit=dev --workspace=@agent-hub/api --workspace=@agent-hub/core --workspace=@agent-hub/email-agent --workspace=@agent-hub/legal-agent --workspace=@agent-hub/financial-agent --workspace=@agent-hub/task-agent --workspace=@agent-hub/stablecoin-agent --workspace=@agent-hub/focus-agent
+RUN npm ci --omit=dev --workspace=@agent-hub/api --workspace=@agent-hub/core --workspace=@agent-hub/email-agent --workspace=@agent-hub/legal-agent --workspace=@agent-hub/financial-agent --workspace=@agent-hub/task-agent --workspace=@agent-hub/stablecoin-agent --workspace=@agent-hub/focus-agent --workspace=@agent-hub/commercial-agent
 
 # Set environment
 ENV NODE_ENV=production

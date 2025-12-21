@@ -537,12 +537,13 @@ function getAgentName(agentId) {
         return 'Desconhecido';
     // Mapeamento de prefixos conhecidos para nomes amigáveis
     const agentPrefixes = [
-        { prefix: 'email-agent', name: 'Email Agent' },
-        { prefix: 'legal-agent', name: 'Legal Agent' },
-        { prefix: 'financial-agent', name: 'Financial Agent' },
-        { prefix: 'stablecoin-agent', name: 'Stablecoin Agent' },
-        { prefix: 'task-agent', name: 'Task Agent' },
-        { prefix: 'focus-agent', name: 'Focus Agent' },
+        { prefix: 'email-agent', name: 'Agente de Email' },
+        { prefix: 'legal-agent', name: 'Agente Jurídico' },
+        { prefix: 'financial-agent', name: 'Agente Financeiro' },
+        { prefix: 'stablecoin-agent', name: 'Agente Stablecoin' },
+        { prefix: 'task-agent', name: 'Agente de Tarefas' },
+        { prefix: 'focus-agent', name: 'Agente de Foco' },
+        { prefix: 'commercial-agent', name: 'Agente Comercial' },
     ];
     // Verifica se o agentId começa com algum prefixo conhecido
     for (const { prefix, name } of agentPrefixes) {

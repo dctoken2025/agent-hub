@@ -442,7 +442,7 @@ export function Settings() {
                 </button>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Define a cada quanto tempo o Stablecoin Agent verifica novos eventos
+                Define a cada quanto tempo o Agente Stablecoin verifica novos eventos
               </p>
             </div>
 

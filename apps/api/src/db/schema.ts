@@ -58,6 +58,25 @@ export const userConfigs = pgTable('user_configs', {
     stablecoin: null,
     task: null,
     focus: null,
+    commercial: null,
+  }),
+  
+  // Config do agente comercial
+  commercialAgentConfig: jsonb('commercial_agent_config').default({
+    enabled: true,
+    autoAnalyze: true,
+    commercialKeywords: [
+      'cotação', 'orçamento', 'quote', 'proposta comercial',
+      'pedido de preço', 'solicitação de preço', 'quanto custa',
+      'pedido', 'compra', 'aquisição', 'interesse em adquirir',
+      'negociação', 'desconto', 'condições comerciais',
+      'licitação', 'pregão', 'concorrência', 'edital',
+      'renovação', 'parceria', 'distribuição',
+    ],
+    vipClients: [],
+    productsServices: [],
+    highValueThreshold: 10000000,
+    urgentDaysBeforeDeadline: 2,
   }),
   legalAgentConfig: jsonb('legal_agent_config').default({
     enabled: true,
@@ -480,6 +499,77 @@ export const aiUsageLogs = pgTable('ai_usage_logs', {
 });
 
 // ===========================================
+// Itens Comerciais (Cotações, Propostas, Oportunidades)
+// ===========================================
+export const commercialItems = pgTable('commercial_items', {
+  id: serial('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  emailId: varchar('email_id', { length: 255 }).notNull(),
+  threadId: varchar('thread_id', { length: 255 }),
+  
+  // Contexto do email original
+  emailSubject: text('email_subject'),
+  emailFrom: varchar('email_from', { length: 255 }),
+  emailDate: timestamp('email_date'),
+
+  // Tipo e status
+  type: varchar('type', { length: 20 }).notNull(), // quote_request, proposal, negotiation, order, follow_up, complaint, renewal, opportunity, outro
+  status: varchar('status', { length: 20 }).notNull().default('new'), // new, in_progress, quoted, negotiating, won, lost, cancelled, on_hold
+  
+  // Cliente/Contato
+  clientName: varchar('client_name', { length: 255 }).notNull(),
+  clientCompany: varchar('client_company', { length: 255 }),
+  clientEmail: varchar('client_email', { length: 255 }),
+  clientPhone: varchar('client_phone', { length: 50 }),
+  clientType: varchar('client_type', { length: 20 }), // prospect, new_client, existing_client, strategic_client, partner, distributor, other
+  
+  // Detalhes da oportunidade
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description').notNull(),
+  productsServices: text('products_services'), // JSON array
+  estimatedValue: integer('estimated_value'), // Valor em centavos
+  currency: varchar('currency', { length: 10 }).default('BRL'),
+  quantity: varchar('quantity', { length: 255 }),
+  
+  // Prazos
+  deadlineDate: timestamp('deadline_date'),
+  desiredDeliveryDate: timestamp('desired_delivery_date'),
+  
+  // Competição
+  hasCompetitors: boolean('has_competitors').default(false),
+  competitorNames: text('competitor_names'), // JSON array
+  isUrgentBid: boolean('is_urgent_bid').default(false),
+  
+  // Priorização
+  priority: varchar('priority', { length: 10 }).default('normal'), // critical, high, normal, low
+  priorityReason: varchar('priority_reason', { length: 255 }),
+  
+  // Próximas ações
+  suggestedAction: text('suggested_action'),
+  suggestedResponse: text('suggested_response'),
+  
+  // Resolução
+  wonAt: timestamp('won_at'),
+  lostAt: timestamp('lost_at'),
+  lostReason: text('lost_reason'),
+  wonValue: integer('won_value'), // Valor final fechado em centavos
+  
+  // Responsável
+  assignedTo: varchar('assigned_to', { length: 255 }),
+  assignedAt: timestamp('assigned_at'),
+  
+  // Tags e notas
+  tags: text('tags'), // JSON array
+  notes: text('notes'),
+  
+  // Metadados
+  confidence: integer('confidence'), // 0-100
+  analyzedAt: timestamp('analyzed_at').defaultNow(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// ===========================================
 // Focus Briefings (Análises de Foco da IA)
 // ===========================================
 export const focusBriefings = pgTable('focus_briefings', {
@@ -582,3 +672,7 @@ export type NewActionItemDB = typeof actionItems.$inferInsert;
 // Focus Briefings
 export type FocusBriefingDB = typeof focusBriefings.$inferSelect;
 export type NewFocusBriefingDB = typeof focusBriefings.$inferInsert;
+
+// Commercial Items
+export type CommercialItemDB = typeof commercialItems.$inferSelect;
+export type NewCommercialItemDB = typeof commercialItems.$inferInsert;

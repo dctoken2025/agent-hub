@@ -23,6 +23,7 @@
     "@agent-hub/legal-agent": "*",
     "@agent-hub/financial-agent": "*",
     "@agent-hub/task-agent": "*",
+    "@agent-hub/commercial-agent": "*",
     "googleapis": "^144.0.0",
     "zod": "^3.23.8"
   },

@@ -629,9 +629,11 @@ function FinancialDetailsModal({
                   )}
                 </div>
                 <a
-                  href={`/emails?id=${item.emailId}`}
+                  href={`https://mail.google.com/mail/u/0/#inbox/${item.threadId || item.emailId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900 rounded text-blue-600 dark:text-blue-400"
-                  title="Ver email"
+                  title="Ver email no Gmail"
                 >
                   <ExternalLink className="h-4 w-4" />
                 </a>

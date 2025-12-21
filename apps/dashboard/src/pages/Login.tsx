@@ -324,7 +324,7 @@ export function Login() {
                         <GraduationCap className="w-5 h-5 text-white" />
                       </div>
                       <div>
-                        <p className="font-semibold text-white">Ensinar Email Agent</p>
+                        <p className="font-semibold text-white">Ensinar Agente de Email</p>
                         <p className="text-xs text-slate-500">Pergunta 2 de 5</p>
                       </div>
                     </div>

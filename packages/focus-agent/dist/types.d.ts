@@ -1,5 +1,5 @@
 import { z } from 'zod';
-export type FocusItemType = 'email' | 'task' | 'financial' | 'legal';
+export type FocusItemType = 'email' | 'task' | 'financial' | 'legal' | 'commercial';
 export type UrgencyLevel = 'critical' | 'high' | 'medium' | 'low';
 export interface FocusItem {
     id: number;
@@ -35,6 +35,7 @@ export interface CollectedData {
     tasks: TaskData[];
     financialItems: FinancialData[];
     legalItems: LegalData[];
+    commercialItems: CommercialData[];
 }
 export interface EmailData {
     id: number;
@@ -89,6 +90,24 @@ export interface LegalData {
     status: string;
     parties?: string;
 }
+export interface CommercialData {
+    id: number;
+    type: string;
+    status: string;
+    priority: string;
+    companyName?: string;
+    contactName?: string;
+    contactEmail?: string;
+    productService?: string;
+    requestedAmount?: number;
+    currency: string;
+    deadline?: Date;
+    details?: string;
+    suggestedAction?: string;
+    emailSubject?: string;
+    emailFrom?: string;
+    analyzedAt?: Date;
+}
 export interface FocusAgentConfig {
     dailyGenerationTime?: string;
     urgentDaysThreshold?: number;
@@ -113,7 +132,7 @@ export declare const FocusAgentConfigSchema: z.ZodObject<{
 }>;
 export declare const FocusItemSchema: z.ZodObject<{
     id: z.ZodNumber;
-    type: z.ZodEnum<["email", "task", "financial", "legal"]>;
+    type: z.ZodEnum<["email", "task", "financial", "legal", "commercial"]>;
     title: z.ZodString;
     description: z.ZodString;
     urgencyScore: z.ZodNumber;
@@ -126,7 +145,7 @@ export declare const FocusItemSchema: z.ZodObject<{
     riskLevel: z.ZodOptional<z.ZodString>;
     originalData: z.ZodRecord<z.ZodString, z.ZodUnknown>;
 }, "strip", z.ZodTypeAny, {
-    type: "email" | "task" | "financial" | "legal";
+    type: "email" | "task" | "financial" | "legal" | "commercial";
     id: number;
     title: string;
     description: string;
@@ -140,7 +159,7 @@ export declare const FocusItemSchema: z.ZodObject<{
     isVip?: boolean | undefined;
     riskLevel?: string | undefined;
 }, {
-    type: "email" | "task" | "financial" | "legal";
+    type: "email" | "task" | "financial" | "legal" | "commercial";
     id: number;
     title: string;
     description: string;
@@ -160,7 +179,7 @@ export declare const FocusBriefingSchema: z.ZodObject<{
     keyHighlights: z.ZodArray<z.ZodString, "many">;
     prioritizedItems: z.ZodArray<z.ZodObject<{
         id: z.ZodNumber;
-        type: z.ZodEnum<["email", "task", "financial", "legal"]>;
+        type: z.ZodEnum<["email", "task", "financial", "legal", "commercial"]>;
         title: z.ZodString;
         description: z.ZodString;
         urgencyScore: z.ZodNumber;
@@ -173,7 +192,7 @@ export declare const FocusBriefingSchema: z.ZodObject<{
         riskLevel: z.ZodOptional<z.ZodString>;
         originalData: z.ZodRecord<z.ZodString, z.ZodUnknown>;
     }, "strip", z.ZodTypeAny, {
-        type: "email" | "task" | "financial" | "legal";
+        type: "email" | "task" | "financial" | "legal" | "commercial";
         id: number;
         title: string;
         description: string;
@@ -187,7 +206,7 @@ export declare const FocusBriefingSchema: z.ZodObject<{
         isVip?: boolean | undefined;
         riskLevel?: string | undefined;
     }, {
-        type: "email" | "task" | "financial" | "legal";
+        type: "email" | "task" | "financial" | "legal" | "commercial";
         id: number;
         title: string;
         description: string;
@@ -210,7 +229,7 @@ export declare const FocusBriefingSchema: z.ZodObject<{
     briefingText: string;
     keyHighlights: string[];
     prioritizedItems: {
-        type: "email" | "task" | "financial" | "legal";
+        type: "email" | "task" | "financial" | "legal" | "commercial";
         id: number;
         title: string;
         description: string;
@@ -233,7 +252,7 @@ export declare const FocusBriefingSchema: z.ZodObject<{
     briefingText: string;
     keyHighlights: string[];
     prioritizedItems: {
-        type: "email" | "task" | "financial" | "legal";
+        type: "email" | "task" | "financial" | "legal" | "commercial";
         id: number;
         title: string;
         description: string;

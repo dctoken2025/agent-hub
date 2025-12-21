@@ -610,12 +610,13 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 // Helper para nome amigável do tipo de agente
 function getAgentDisplayName(agentType: string): string {
   const names: Record<string, string> = {
-    email: 'Email Agent',
-    legal: 'Legal Agent',
-    financial: 'Financial Agent',
-    stablecoin: 'Stablecoin Agent',
-    task: 'Task Agent',
-    focus: 'Focus Agent',
+    email: 'Agente de Email',
+    legal: 'Agente Jurídico',
+    financial: 'Agente Financeiro',
+    stablecoin: 'Agente Stablecoin',
+    task: 'Agente de Tarefas',
+    focus: 'Agente de Foco',
+    commercial: 'Agente Comercial',
   };
   return names[agentType] || agentType;
 }

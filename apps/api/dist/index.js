@@ -19,6 +19,7 @@ import { adminRoutes } from './routes/admin.js';
 import { taskRoutes } from './routes/tasks.js';
 import { focusRoutes } from './routes/focus.js';
 import { agentTeachingRoutes } from './routes/agent-teaching.js';
+import { commercialRoutes } from './routes/commercial.js';
 import { getAgentManager } from './services/agent-manager.js';
 // Inicializa banco de dados
 initDatabase();
@@ -57,6 +58,7 @@ async function main() {
     await app.register(taskRoutes, { prefix: '/api/tasks' });
     await app.register(focusRoutes, { prefix: '/api/focus' });
     await app.register(agentTeachingRoutes, { prefix: '/api/agent-teaching' });
+    await app.register(commercialRoutes, { prefix: '/api/commercial' });
     // Health check (público)
     app.get('/api/health', async () => {
         return { status: 'ok', timestamp: new Date().toISOString() };

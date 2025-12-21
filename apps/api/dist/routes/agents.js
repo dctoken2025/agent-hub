@@ -93,7 +93,7 @@ export const agentRoutes = async (app) => {
             agents.push({
                 config: {
                     id: 'email-agent',
-                    name: 'Email Agent',
+                    name: 'Agente de Email',
                     description: 'Agente de classificação e triagem de emails',
                     enabled: userConfig.emailAgent.enabled,
                     schedule: {
@@ -134,7 +134,7 @@ export const agentRoutes = async (app) => {
             agents.push({
                 config: {
                     id: 'legal-agent',
-                    name: 'Legal Agent',
+                    name: 'Agente Jurídico',
                     description: 'Agente de análise de contratos e documentos legais',
                     enabled: userConfig.legalAgent.enabled,
                     schedule: {
@@ -174,7 +174,7 @@ export const agentRoutes = async (app) => {
             agents.push({
                 config: {
                     id: 'financial-agent',
-                    name: 'Financial Agent',
+                    name: 'Agente Financeiro',
                     description: 'Agente de análise de cobranças, boletos e pagamentos',
                     enabled: userConfig.financialAgent.enabled,
                     schedule: {
@@ -213,7 +213,7 @@ export const agentRoutes = async (app) => {
             agents.push({
                 config: {
                     id: 'stablecoin-agent',
-                    name: 'Stablecoin Agent',
+                    name: 'Agente Stablecoin',
                     description: 'Agente de monitoramento de stablecoins na blockchain',
                     enabled: userConfig.stablecoinAgent.enabled,
                     schedule: {
@@ -252,7 +252,7 @@ export const agentRoutes = async (app) => {
         agents.push({
             config: {
                 id: 'task-agent',
-                name: 'Task Agent',
+                name: 'Agente de Tarefas',
                 description: 'Extrai tarefas e action items de emails importantes',
                 enabled: userConfig.emailAgent.enabled, // Ativo quando Email Agent está ativo
                 schedule: {
@@ -288,7 +288,7 @@ export const agentRoutes = async (app) => {
         agents.push({
             config: {
                 id: 'focus-agent',
-                name: 'Focus Agent',
+                name: 'Agente de Foco',
                 description: 'Análise de foco e priorização inteligente de tarefas',
                 enabled: true, // Sempre habilitado (é chamado sob demanda)
                 schedule: {
@@ -299,6 +299,44 @@ export const agentRoutes = async (app) => {
             runCount: focusAgentRunCount,
             lastRun: focusAgentLastRun,
         });
+        // Commercial Agent - Analisa pedidos de cotação e oportunidades comerciais
+        let commercialAgentRunCount = 0;
+        let commercialAgentLastRun = null;
+        if (db) {
+            try {
+                const runCountResult = await db
+                    .select({ count: sql `count(*)` })
+                    .from(agentLogs)
+                    .where(and(eq(agentLogs.userId, userId), eq(agentLogs.agentId, `commercial-agent-${userId}`)));
+                const lastRunResult = await db
+                    .select({ createdAt: agentLogs.createdAt })
+                    .from(agentLogs)
+                    .where(and(eq(agentLogs.userId, userId), eq(agentLogs.agentId, `commercial-agent-${userId}`)))
+                    .orderBy(desc(agentLogs.createdAt))
+                    .limit(1);
+                commercialAgentRunCount = Number(runCountResult[0]?.count) || 0;
+                commercialAgentLastRun = lastRunResult[0]?.createdAt?.toISOString() || null;
+            }
+            catch {
+                // Ignora erros
+            }
+        }
+        if (userConfig.commercialAgent?.enabled !== false) {
+            agents.push({
+                config: {
+                    id: 'commercial-agent',
+                    name: 'Agente Comercial',
+                    description: 'Analisa pedidos de cotação e oportunidades de vendas',
+                    enabled: userConfig.commercialAgent?.enabled ?? true,
+                    schedule: {
+                        type: 'manual',
+                    },
+                },
+                status: emailAgentRunning ? 'running' : 'stopped', // Roda junto com Email Agent
+                runCount: commercialAgentRunCount,
+                lastRun: commercialAgentLastRun,
+            });
+        }
         return { agents };
     });
     // Detalhes de um agente específico

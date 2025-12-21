@@ -72,6 +72,16 @@ export interface FinancialAgentSettings {
   customContext?: string; // Contexto personalizado para a IA
 }
 
+// Configuração do Commercial Agent
+export interface CommercialAgentSettings {
+  enabled: boolean;
+  autoAnalyze: boolean;
+  maxEmailAgeDays: number;
+  commercialKeywords: string[];
+  urgentKeywords: string[];
+  customContext?: string; // Contexto personalizado para a IA
+}
+
 // Configuração de Notificações
 export interface NotificationSettings {
   slackWebhookUrl?: string;
@@ -165,6 +175,7 @@ export async function loadUserConfig(userId: string): Promise<{
   legalAgent: LegalAgentSettings;
   stablecoinAgent: StablecoinAgentSettings;
   financialAgent: FinancialAgentSettings;
+  commercialAgent: CommercialAgentSettings;
   notifications: NotificationSettings;
 }> {
   const defaults = {
@@ -227,6 +238,20 @@ export async function loadUserConfig(userId: string): Promise<{
         'efetuar pagamento', 'segue boleto', 'anexo boleto',
       ],
     } as FinancialAgentSettings,
+    commercialAgent: {
+      enabled: true,
+      autoAnalyze: true,
+      maxEmailAgeDays: 7,
+      commercialKeywords: [
+        'cotação', 'orçamento', 'proposta', 'preço', 'pedido', 'comercial',
+        'sales inquiry', 'quotation request', 'pricing', 'order', 'proposal',
+        'oportunidade', 'lead', 'negócio', 'venda', 'cliente', 'parceiro',
+        'demonstração', 'demo', 'reunião', 'call', 'apresentação',
+      ],
+      urgentKeywords: [
+        'urgente', 'imediato', 'ASAP', 'agora', 'prioridade', 'critical', 'deadline',
+      ],
+    } as CommercialAgentSettings,
     notifications: {} as NotificationSettings,
   };
 
@@ -246,6 +271,7 @@ export async function loadUserConfig(userId: string): Promise<{
     const legalAgentFromDb = config.legalAgentConfig as Partial<LegalAgentSettings> | null;
     const stablecoinAgentFromDb = config.stablecoinAgentConfig as Partial<StablecoinAgentSettings> | null;
     const financialAgentFromDb = config.financialAgentConfig as Partial<FinancialAgentSettings> | null;
+    const commercialAgentFromDb = config.commercialAgentConfig as Partial<CommercialAgentSettings> | null;
 
     return {
       vipSenders: config.vipSenders || defaults.vipSenders,
@@ -266,6 +292,10 @@ export async function loadUserConfig(userId: string): Promise<{
         ...defaults.financialAgent,
         ...financialAgentFromDb,
       } as FinancialAgentSettings,
+      commercialAgent: {
+        ...defaults.commercialAgent,
+        ...commercialAgentFromDb,
+      } as CommercialAgentSettings,
       notifications: (config.notificationConfig as NotificationSettings) || defaults.notifications,
     };
   } catch (error) {
@@ -308,6 +338,7 @@ export async function saveUserConfigValue(
     legalAgentConfig: LegalAgentSettings;
     stablecoinAgentConfig: StablecoinAgentSettings;
     financialAgentConfig: FinancialAgentSettings;
+    commercialAgentConfig: CommercialAgentSettings;
     notificationConfig: NotificationSettings;
   }>
 ): Promise<void> {
@@ -725,6 +756,7 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
       legalAgent: config.legalAgent,
       stablecoinAgent: config.stablecoinAgent,
       financialAgent: config.financialAgent,
+      commercialAgent: config.commercialAgent,
     };
   });
 
@@ -862,6 +894,37 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
         };
       } catch (error) {
         console.error('[Config] Erro ao salvar Financial Agent:', error);
+        return reply.status(500).send({
+          success: false,
+          error: error instanceof Error ? error.message : 'Erro ao salvar',
+        });
+      }
+    }
+  );
+
+  // Atualiza configurações do Commercial Agent
+  app.put<{ Body: Partial<CommercialAgentSettings> }>(
+    '/agents/commercial',
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      try {
+        const userId = request.user!.id;
+        const currentConfig = await loadUserConfig(userId);
+
+        const updated: CommercialAgentSettings = {
+          ...currentConfig.commercialAgent,
+          ...request.body,
+        };
+
+        await saveUserConfigValue(userId, { commercialAgentConfig: updated });
+
+        return {
+          success: true,
+          message: 'Configuração do Commercial Agent salva',
+          config: updated,
+        };
+      } catch (error) {
+        console.error('[Config] Erro ao salvar Commercial Agent:', error);
         return reply.status(500).send({
           success: false,
           error: error instanceof Error ? error.message : 'Erro ao salvar',

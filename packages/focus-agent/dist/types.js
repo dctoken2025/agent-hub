@@ -10,7 +10,7 @@ export const FocusAgentConfigSchema = z.object({
 });
 export const FocusItemSchema = z.object({
     id: z.number(),
-    type: z.enum(['email', 'task', 'financial', 'legal']),
+    type: z.enum(['email', 'task', 'financial', 'legal', 'commercial']),
     title: z.string(),
     description: z.string(),
     urgencyScore: z.number(),

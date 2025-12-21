@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { getDb, classifiedEmails, legalAnalyses, financialItems, actionItems, users } from '../db/index.js';
+import { getDb, classifiedEmails, legalAnalyses, financialItems, actionItems, commercialItems, users } from '../db/index.js';
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
 import { loadGlobalConfig } from './config.js';
@@ -7,6 +7,7 @@ import { getAgentManager } from '../services/agent-manager.js';
 import type { ClassifiedEmail, ContractAnalysis } from '@agent-hub/email-agent';
 import type { FinancialItem } from '@agent-hub/financial-agent';
 import type { ActionItem } from '@agent-hub/task-agent';
+import type { CommercialItem } from '@agent-hub/commercial-agent';
 
 // Função para salvar emails no banco (com userId)
 async function saveEmailsToDatabase(emails: ClassifiedEmail[], userId: string): Promise<void> {
@@ -326,6 +327,90 @@ async function saveActionItemsToDatabase(
 
   console.log(
     `[EmailRoutes] Total de action items: ${savedCount} novos, ${skippedCount} já existentes`
+  );
+}
+
+// Função para salvar commercial items no banco (com userId)
+async function saveCommercialItemsToDatabase(
+  items: CommercialItem[],
+  userId: string
+): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    console.log('[EmailRoutes] Banco não disponível para salvar commercial items');
+    return;
+  }
+
+  let savedCount = 0;
+  let skippedCount = 0;
+
+  for (const item of items) {
+    try {
+      // Verifica se já existe item com mesmo emailId e título para este usuário
+      const existing = await db.execute(sql.raw(`
+        SELECT id FROM commercial_items 
+        WHERE user_id = '${userId}' 
+          AND email_id = '${item.emailId}'
+          AND title = '${item.title.replace(/'/g, "''")}'
+        LIMIT 1
+      `));
+
+      if ((existing as any[]).length > 0) {
+        skippedCount++;
+        continue;
+      }
+
+      // Insere novo commercial item
+      await db.insert(commercialItems).values({
+        userId,
+        emailId: item.emailId,
+        threadId: item.threadId || null,
+        emailSubject: item.emailSubject || null,
+        emailFrom: item.emailFrom || null,
+        emailDate: item.emailDate ? new Date(item.emailDate) : null,
+        // Tipo e status
+        type: item.type,
+        status: item.status,
+        // Cliente/Contato
+        clientName: item.clientName,
+        clientCompany: item.clientCompany || null,
+        clientEmail: item.clientEmail || null,
+        clientPhone: item.clientPhone || null,
+        clientType: item.clientType || null,
+        // Detalhes
+        title: item.title,
+        description: item.description,
+        productsServices: item.productsServices ? JSON.stringify(item.productsServices) : null,
+        estimatedValue: item.estimatedValue || null,
+        currency: item.currency || 'BRL',
+        quantity: item.quantity || null,
+        // Prazos
+        deadlineDate: item.deadlineDate ? new Date(item.deadlineDate) : null,
+        desiredDeliveryDate: item.desiredDeliveryDate ? new Date(item.desiredDeliveryDate) : null,
+        // Competição
+        hasCompetitors: item.hasCompetitors || false,
+        competitorNames: item.competitorNames ? JSON.stringify(item.competitorNames) : null,
+        isUrgentBid: item.isUrgentBid || false,
+        // Priorização
+        priority: item.priority,
+        priorityReason: item.priorityReason || null,
+        // Ações
+        suggestedAction: item.suggestedAction || null,
+        suggestedResponse: item.suggestedResponse || null,
+        // Tags
+        tags: item.tags ? JSON.stringify(item.tags) : null,
+        // Confiança
+        confidence: item.confidence,
+        analyzedAt: new Date(),
+      });
+      savedCount++;
+    } catch (error) {
+      console.error(`[EmailRoutes] Erro ao salvar commercial item "${item.title}":`, error);
+    }
+  }
+
+  console.log(
+    `[EmailRoutes] Total de commercial items: ${savedCount} novos, ${skippedCount} já existentes`
   );
 }
 
@@ -852,4 +937,4 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
 };
 
 // Exporta funções helper para uso em outros lugares
-export { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase, saveActionItemsToDatabase };
+export { saveEmailsToDatabase, saveLegalAnalysesToDatabase, saveFinancialItemsToDatabase, saveActionItemsToDatabase, saveCommercialItemsToDatabase };

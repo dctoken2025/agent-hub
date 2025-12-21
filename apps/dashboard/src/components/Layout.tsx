@@ -18,7 +18,8 @@ import {
   Users,
   CheckSquare,
   Target,
-  GraduationCap
+  GraduationCap,
+  Briefcase
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -31,6 +32,7 @@ const navigation = [
   { name: 'Emails', href: '/emails', icon: Mail },
   { name: 'Análises Jurídicas', href: '/legal', icon: Scale },
   { name: 'Financeiro', href: '/financial', icon: DollarSign },
+  { name: 'Comercial', href: '/commercial', icon: Briefcase },
   { name: 'Tarefas', href: '/tasks', icon: CheckSquare },
   { name: 'Stablecoins', href: '/stablecoins', icon: Coins },
   { name: 'Agentes', href: '/agents', icon: Bot },

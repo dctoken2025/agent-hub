@@ -66,7 +66,7 @@ program
         : undefined;
     const emailAgent = new EmailAgent({
         id: 'email-agent',
-        name: 'Email Agent',
+        name: 'Agente de Email',
         description: 'Classificação e triagem de emails',
         enabled: true,
         schedule: { type: 'interval', value: 5 },

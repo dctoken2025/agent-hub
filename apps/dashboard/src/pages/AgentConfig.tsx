@@ -4,7 +4,8 @@ import {
   Mail, Scale, Plus, Trash2, Save, 
   Clock, Zap, AlertTriangle, CheckCircle, Edit2, X,
   ChevronDown, ChevronUp, ToggleLeft, ToggleRight, Coins, Calendar,
-  Lock, Lightbulb, Shield, FileText, DollarSign, Receipt, CheckSquare, Info
+  Lock, Lightbulb, Shield, FileText, DollarSign, Receipt, CheckSquare, Info,
+  Briefcase, Handshake, MessageSquare
 } from 'lucide-react';
 import { useDialog } from '../components/Dialog';
 import { apiRequest } from '@/lib/utils';
@@ -221,11 +222,21 @@ interface FinancialAgentSettings {
   customContext?: string;
 }
 
+interface CommercialAgentSettings {
+  enabled: boolean;
+  autoAnalyze: boolean;
+  maxEmailAgeDays: number;
+  commercialKeywords: string[];
+  urgentKeywords: string[];
+  customContext?: string;
+}
+
 interface AgentConfigResponse {
   emailAgent: EmailAgentSettings;
   legalAgent: LegalAgentSettings;
   stablecoinAgent: StablecoinAgentSettings;
   financialAgent: FinancialAgentSettings;
+  commercialAgent: CommercialAgentSettings;
 }
 
 // Usa apiRequest de @/lib/utils que inclui o token de autenticação
@@ -266,7 +277,7 @@ const operatorLabels = {
 export default function AgentConfig() {
   const queryClient = useQueryClient();
   const dialog = useDialog();
-  const [expandedSection, setExpandedSection] = useState<'email' | 'legal' | 'financial' | 'stablecoin' | 'task' | null>('email');
+  const [expandedSection, setExpandedSection] = useState<'email' | 'legal' | 'financial' | 'commercial' | 'stablecoin' | 'task' | null>('email');
   const [editingRule, setEditingRule] = useState<ClassificationRule | null>(null);
   const [showNewRule, setShowNewRule] = useState(false);
   const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
@@ -278,12 +289,14 @@ export default function AgentConfig() {
   const [legalForm, setLegalForm] = useState<LegalAgentSettings | null>(null);
   const [stablecoinForm, setStablecoinForm] = useState<StablecoinAgentSettings | null>(null);
   const [financialForm, setFinancialForm] = useState<FinancialAgentSettings | null>(null);
+  const [commercialForm, setCommercialForm] = useState<CommercialAgentSettings | null>(null);
 
   // Track se houve mudanças
   const [emailChanged, setEmailChanged] = useState(false);
   const [legalChanged, setLegalChanged] = useState(false);
   const [stablecoinChanged, setStablecoinChanged] = useState(false);
   const [financialChanged, setFinancialChanged] = useState(false);
+  const [commercialChanged, setCommercialChanged] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['agentConfig'],
@@ -297,8 +310,9 @@ export default function AgentConfig() {
       if (!legalForm) setLegalForm(data.legalAgent);
       if (!stablecoinForm) setStablecoinForm(data.stablecoinAgent);
       if (!financialForm) setFinancialForm(data.financialAgent);
+      if (!commercialForm) setCommercialForm(data.commercialAgent);
     }
-  }, [data, emailForm, legalForm, stablecoinForm, financialForm]);
+  }, [data, emailForm, legalForm, stablecoinForm, financialForm, commercialForm]);
 
   const updateEmailAgent = useMutation({
     mutationFn: (settings: Partial<EmailAgentSettings>) =>
@@ -309,7 +323,7 @@ export default function AgentConfig() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
       setEmailChanged(false);
-      dialog.success('Configurações do Email Agent salvas!');
+      dialog.success('Configurações do Agente de Email salvas!');
     },
     onError: (error: Error) => dialog.error(error.message),
   });
@@ -323,7 +337,7 @@ export default function AgentConfig() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
       setLegalChanged(false);
-      dialog.success('Configurações do Legal Agent salvas!');
+      dialog.success('Configurações do Agente Jurídico salvas!');
     },
     onError: (error: Error) => dialog.error(error.message),
   });
@@ -337,7 +351,7 @@ export default function AgentConfig() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
       setStablecoinChanged(false);
-      dialog.success('Configurações do Stablecoin Agent salvas!');
+      dialog.success('Configurações do Agente Stablecoin salvas!');
     },
     onError: (error: Error) => dialog.error(error.message),
   });
@@ -351,7 +365,21 @@ export default function AgentConfig() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
       setFinancialChanged(false);
-      dialog.success('Configurações do Financial Agent salvas!');
+      dialog.success('Configurações do Agente Financeiro salvas!');
+    },
+    onError: (error: Error) => dialog.error(error.message),
+  });
+
+  const updateCommercialAgent = useMutation({
+    mutationFn: (settings: Partial<CommercialAgentSettings>) =>
+      apiRequest('/config/agents/commercial', {
+        method: 'PUT',
+        body: JSON.stringify(settings),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agentConfig'] });
+      setCommercialChanged(false);
+      dialog.success('Configurações do Agente Comercial salvas!');
     },
     onError: (error: Error) => dialog.error(error.message),
   });
@@ -394,7 +422,7 @@ export default function AgentConfig() {
     onError: (error: Error) => dialog.error(error.message),
   });
 
-  if (isLoading || !emailForm || !legalForm || !stablecoinForm || !financialForm) {
+  if (isLoading || !emailForm || !legalForm || !stablecoinForm || !financialForm || !commercialForm) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -415,7 +443,7 @@ export default function AgentConfig() {
         </p>
       </div>
 
-      {/* Email Agent Config */}
+      {/* Agente de Email Config */}
       <div className="bg-card rounded-xl border shadow-sm overflow-hidden" data-onboarding="config-section">
         <button
           onClick={() => setExpandedSection(expandedSection === 'email' ? null : 'email')}
@@ -426,7 +454,7 @@ export default function AgentConfig() {
               <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="text-left">
-              <h3 className="font-semibold">Email Agent</h3>
+              <h3 className="font-semibold">Agente de Email</h3>
               <p className="text-sm text-muted-foreground">
                 {data?.emailAgent?.customRules?.length || 0} regras personalizadas
               </p>
@@ -588,7 +616,7 @@ Exemplos:
               </p>
             </div>
 
-            {/* Botão Salvar Email Agent */}
+            {/* Botão Salvar Agente de Email */}
             <div className="flex justify-end">
               <button
                 onClick={() => updateEmailAgent.mutate(emailForm)}
@@ -752,7 +780,7 @@ Exemplos:
         )}
       </div>
 
-      {/* Legal Agent Config */}
+      {/* Agente Jurídico Config */}
       <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
         <button
           onClick={() => setExpandedSection(expandedSection === 'legal' ? null : 'legal')}
@@ -763,7 +791,7 @@ Exemplos:
               <Scale className="h-5 w-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="text-left">
-              <h3 className="font-semibold">Legal Agent</h3>
+              <h3 className="font-semibold">Agente Jurídico</h3>
               <p className="text-sm text-muted-foreground">
                 Análise automática de contratos
               </p>
@@ -784,7 +812,7 @@ Exemplos:
 
         {expandedSection === 'legal' && (
           <div className="p-4 border-t space-y-6">
-            {/* Regras Embutidas do Legal Agent */}
+            {/* Regras Embutidas do Agente Jurídico */}
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <Shield className="h-4 w-4 text-muted-foreground" />
@@ -815,7 +843,7 @@ Exemplos:
               </div>
             </div>
 
-            {/* Configurações do Legal Agent */}
+            {/* Configurações do Agente Jurídico */}
             <div className="border-t pt-4">
               <h4 className="font-medium flex items-center gap-2 mb-3">
                 <FileText className="h-4 w-4" />
@@ -920,7 +948,7 @@ Exemplos:
               </p>
             </div>
 
-            {/* Botão Salvar Legal Agent */}
+            {/* Botão Salvar Agente Jurídico */}
             <div className="flex justify-end">
               <button
                 onClick={() => updateLegalAgent.mutate(legalForm)}
@@ -939,7 +967,7 @@ Exemplos:
         )}
       </div>
 
-      {/* Financial Agent Config */}
+      {/* Agente Financeiro Config */}
       <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
         <button
           onClick={() => setExpandedSection(expandedSection === 'financial' ? null : 'financial')}
@@ -950,7 +978,7 @@ Exemplos:
               <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
             </div>
             <div className="text-left">
-              <h3 className="font-semibold">Financial Agent</h3>
+              <h3 className="font-semibold">Agente Financeiro</h3>
               <p className="text-sm text-muted-foreground">
                 Detecta cobranças, boletos e pagamentos
               </p>
@@ -971,7 +999,7 @@ Exemplos:
 
         {expandedSection === 'financial' && (
           <div className="p-4 border-t space-y-6">
-            {/* Regras Embutidas do Financial Agent */}
+            {/* Regras Embutidas do Agente Financeiro */}
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <Receipt className="h-4 w-4 text-muted-foreground" />
@@ -1110,7 +1138,201 @@ Exemplos:
         )}
       </div>
 
-      {/* Stablecoin Agent Config */}
+      {/* Agente Comercial Config */}
+      <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
+        <button
+          onClick={() => setExpandedSection(expandedSection === 'commercial' ? null : 'commercial')}
+          className="w-full p-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+              <Briefcase className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="text-left">
+              <h3 className="font-semibold">Agente Comercial</h3>
+              <p className="text-sm text-muted-foreground">
+                Detecta pedidos de cotação, leads e oportunidades de vendas
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {commercialChanged && (
+              <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                Alterações pendentes
+              </span>
+            )}
+            <span className={`px-2 py-1 rounded text-xs font-medium ${commercialForm.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+              {commercialForm.enabled ? 'Ativo' : 'Inativo'}
+            </span>
+            {expandedSection === 'commercial' ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+          </div>
+        </button>
+
+        {expandedSection === 'commercial' && (
+          <div className="p-4 border-t space-y-6">
+            {/* Detecção Automática */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Handshake className="h-4 w-4 text-muted-foreground" />
+                <h4 className="font-medium">Detecção Automática</h4>
+                <span className="text-xs bg-muted px-2 py-0.5 rounded">Powered by Claude</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                O agente comercial detecta automaticamente emails sobre vendas e extrai:
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {['Pedidos de cotação', 'Consultas de vendas', 'Leads qualificados', 'Empresa/Contato', 'Produtos/Serviços', 'Prazos e valores'].map((item, idx) => (
+                  <div key={idx} className="p-2 border rounded-lg bg-muted/20 text-sm flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Configurações */}
+            <div className="border-t pt-4">
+              <h4 className="font-medium flex items-center gap-2 mb-3">
+                <Zap className="h-4 w-4" />
+                Configurações
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Análise automática</label>
+                  <button
+                    onClick={() => {
+                      setCommercialForm({ ...commercialForm, autoAnalyze: !commercialForm.autoAnalyze });
+                      setCommercialChanged(true);
+                    }}
+                    className={`w-full px-3 py-2 border rounded-lg flex items-center justify-center gap-2 transition-colors ${
+                      commercialForm.autoAnalyze ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {commercialForm.autoAnalyze ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                    {commercialForm.autoAnalyze ? 'Ativada' : 'Desativada'}
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Agente ativo</label>
+                  <button
+                    onClick={() => {
+                      setCommercialForm({ ...commercialForm, enabled: !commercialForm.enabled });
+                      setCommercialChanged(true);
+                    }}
+                    className={`w-full px-3 py-2 border rounded-lg flex items-center justify-center gap-2 transition-colors ${
+                      commercialForm.enabled ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {commercialForm.enabled ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                    {commercialForm.enabled ? 'Ativo' : 'Inativo'}
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Max. idade email (dias)</label>
+                  <input
+                    type="number"
+                    value={commercialForm.maxEmailAgeDays}
+                    onChange={(e) => {
+                      setCommercialForm({ ...commercialForm, maxEmailAgeDays: parseInt(e.target.value) || 7 });
+                      setCommercialChanged(true);
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg bg-background"
+                    min={1}
+                    max={30}
+                  />
+                  <p className="text-xs text-muted-foreground">Ignora emails mais antigos</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Palavras-chave comerciais */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Palavras-chave comerciais
+                <span className="text-xs text-muted-foreground">(uma por linha)</span>
+              </label>
+              <textarea
+                value={(commercialForm.commercialKeywords || []).join('\n')}
+                onChange={(e) => {
+                  setCommercialForm({ 
+                    ...commercialForm, 
+                    commercialKeywords: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) 
+                  });
+                  setCommercialChanged(true);
+                }}
+                className="w-full px-3 py-2 border rounded-lg bg-background h-32 font-mono text-sm"
+                placeholder="cotação&#10;orçamento&#10;proposta&#10;pedido"
+              />
+            </div>
+
+            {/* Palavras-chave de urgência */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-orange-500" />
+                Palavras-chave de urgência
+                <span className="text-xs text-muted-foreground">(uma por linha)</span>
+              </label>
+              <textarea
+                value={(commercialForm.urgentKeywords || []).join('\n')}
+                onChange={(e) => {
+                  setCommercialForm({ 
+                    ...commercialForm, 
+                    urgentKeywords: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) 
+                  });
+                  setCommercialChanged(true);
+                }}
+                className="w-full px-3 py-2 border rounded-lg bg-background h-24 font-mono text-sm"
+                placeholder="urgente&#10;ASAP&#10;imediato"
+              />
+            </div>
+
+            {/* Contexto Personalizado */}
+            <div className="space-y-2 border-t pt-4">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 text-amber-500" />
+                Contexto Personalizado para a IA
+              </label>
+              <textarea
+                value={commercialForm.customContext || ''}
+                onChange={(e) => {
+                  setCommercialForm({ ...commercialForm, customContext: e.target.value });
+                  setCommercialChanged(true);
+                }}
+                placeholder="Descreva o contexto comercial da sua empresa...
+
+Exemplos:
+- Principais produtos/serviços: SaaS de gestão financeira
+- Clientes-alvo: empresas de médio porte do setor financeiro
+- Processo de vendas: discovery call → demo → proposta → fechamento
+- Lead quente: menciona orçamento ou prazo específico"
+                className="w-full px-3 py-2 border rounded-lg bg-background h-32 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Essas informações serão usadas pela IA para personalizar a análise comercial.
+              </p>
+            </div>
+
+            {/* Botão Salvar */}
+            <div className="flex justify-end">
+              <button
+                onClick={() => updateCommercialAgent.mutate(commercialForm)}
+                disabled={!commercialChanged || updateCommercialAgent.isPending}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  commercialChanged 
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90' 
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <Save className="h-4 w-4" />
+                {updateCommercialAgent.isPending ? 'Salvando...' : 'Salvar Configurações'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Agente Stablecoin Config */}
       <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
         <button
           onClick={() => setExpandedSection(expandedSection === 'stablecoin' ? null : 'stablecoin')}
@@ -1121,7 +1343,7 @@ Exemplos:
               <Coins className="h-5 w-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div className="text-left">
-              <h3 className="font-semibold">Stablecoin Agent</h3>
+              <h3 className="font-semibold">Agente Stablecoin</h3>
               <p className="text-sm text-muted-foreground">
                 Monitoramento de stablecoins BRL na blockchain
               </p>
@@ -1278,7 +1500,7 @@ Exemplos:
               </div>
             </div>
 
-            {/* Botão Salvar Stablecoin Agent */}
+            {/* Botão Salvar Agente Stablecoin */}
             <div className="flex justify-end">
               <button
                 onClick={() => updateStablecoinAgent.mutate(stablecoinForm)}
@@ -1297,7 +1519,7 @@ Exemplos:
         )}
       </div>
 
-      {/* Task Agent Config */}
+      {/* Agente de Tarefas Config */}
       <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
         <button
           onClick={() => setExpandedSection(expandedSection === 'task' ? null : 'task')}
@@ -1308,7 +1530,7 @@ Exemplos:
               <CheckSquare className="h-5 w-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="text-left">
-              <h3 className="font-semibold">Task Agent</h3>
+              <h3 className="font-semibold">Agente de Tarefas</h3>
               <p className="text-sm text-muted-foreground">
                 Extrai tarefas e action items de emails importantes
               </p>
@@ -1330,10 +1552,10 @@ Exemplos:
                 <Info className="h-5 w-5 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
                 <div className="space-y-2 text-sm">
                   <p className="font-medium text-purple-800 dark:text-purple-200">
-                    Como funciona o Task Agent
+                    Como funciona o Agente de Tarefas
                   </p>
                   <ul className="space-y-1 text-purple-700 dark:text-purple-300">
-                    <li>• É executado automaticamente junto com o Email Agent</li>
+                    <li>• É executado automaticamente junto com o Agente de Email</li>
                     <li>• Detecta emails com perguntas, solicitações e pendências</li>
                     <li>• Extrai stakeholders, prazos e contexto do projeto</li>
                     <li>• Gera sugestões de resposta profissional</li>
@@ -1343,7 +1565,7 @@ Exemplos:
               </div>
             </div>
 
-            {/* O que o Task Agent detecta */}
+            {/* O que o Agente de Tarefas detecta */}
             <div>
               <h4 className="font-medium mb-3 flex items-center gap-2">
                 <Zap className="h-4 w-4 text-purple-500" />
@@ -1416,8 +1638,8 @@ Exemplos:
 
             {/* Nota */}
             <div className="text-sm text-muted-foreground bg-muted/30 rounded-lg p-3">
-              <strong>Nota:</strong> O Task Agent é ativado/desativado junto com o Email Agent. 
-              Para habilitá-lo, certifique-se de que o Email Agent está ativo nas configurações acima.
+              <strong>Nota:</strong> O Agente de Tarefas é ativado/desativado junto com o Agente de Email. 
+              Para habilitá-lo, certifique-se de que o Agente de Email está ativo nas configurações acima.
             </div>
           </div>
         )}
