@@ -31,7 +31,8 @@ export function TeachAgentModal({ isOpen, onClose, agentId, agentName }: TeachAg
   const queryClient = useQueryClient();
   const [step, setStep] = useState<'intro' | 'questions' | 'generating' | 'complete'>('intro');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<{ questionId: number; answer: string }[]>([]);
+  // Agora suporta múltiplas respostas por pergunta (array de strings)
+  const [answers, setAnswers] = useState<{ questionId: number; answers: string[] }[]>([]);
   const [customAnswer, setCustomAnswer] = useState('');
   const [generatedContext, setGeneratedContext] = useState('');
 
@@ -110,24 +111,53 @@ export function TeachAgentModal({ isOpen, onClose, agentId, agentName }: TeachAg
     generateQuestionsMutation.mutate();
   };
 
+  // Toggle seleção de opção (permite múltiplas)
   const handleSelectOption = (option: string) => {
-    const newAnswers = [...answers.filter(a => a.questionId !== currentQuestion.id)];
-    newAnswers.push({ questionId: currentQuestion.id, answer: option });
-    setAnswers(newAnswers);
-    setCustomAnswer('');
+    setAnswers(prev => {
+      const existing = prev.find(a => a.questionId === currentQuestion.id);
+      if (existing) {
+        // Toggle: adiciona ou remove da lista
+        const isSelected = existing.answers.includes(option);
+        const newSelectedAnswers = isSelected
+          ? existing.answers.filter(a => a !== option)
+          : [...existing.answers, option];
+        
+        return prev.map(a => 
+          a.questionId === currentQuestion.id 
+            ? { ...a, answers: newSelectedAnswers }
+            : a
+        );
+      } else {
+        // Primeira seleção para esta pergunta
+        return [...prev, { questionId: currentQuestion.id, answers: [option] }];
+      }
+    });
   };
 
   const handleCustomAnswer = () => {
     if (customAnswer.trim()) {
-      const newAnswers = [...answers.filter(a => a.questionId !== currentQuestion.id)];
-      newAnswers.push({ questionId: currentQuestion.id, answer: customAnswer.trim() });
-      setAnswers(newAnswers);
+      setAnswers(prev => {
+        const existing = prev.find(a => a.questionId === currentQuestion.id);
+        if (existing) {
+          // Adiciona resposta customizada se não existir
+          if (!existing.answers.includes(customAnswer.trim())) {
+            return prev.map(a => 
+              a.questionId === currentQuestion.id 
+                ? { ...a, answers: [...a.answers, customAnswer.trim()] }
+                : a
+            );
+          }
+          return prev;
+        } else {
+          return [...prev, { questionId: currentQuestion.id, answers: [customAnswer.trim()] }];
+        }
+      });
     }
   };
 
   const handleNext = () => {
-    // Se tem resposta customizada pendente, salva antes
-    if (customAnswer.trim() && !answers.find(a => a.questionId === currentQuestion.id)) {
+    // Se tem resposta customizada pendente, adiciona às respostas
+    if (customAnswer.trim()) {
       handleCustomAnswer();
     }
 
@@ -137,11 +167,25 @@ export function TeachAgentModal({ isOpen, onClose, agentId, agentName }: TeachAg
     } else {
       // Última pergunta - gera contexto
       setStep('generating');
-      const finalAnswers = customAnswer.trim() && !answers.find(a => a.questionId === currentQuestion.id)
-        ? [...answers, { questionId: currentQuestion.id, answer: customAnswer.trim() }]
-        : answers;
       
-      saveContextMutation.mutate({ agentId, answers: finalAnswers });
+      // Converte para o formato esperado pela API (junta respostas com vírgula)
+      const formattedAnswers = answers.map(a => ({
+        questionId: a.questionId,
+        answer: a.answers.join(', ')
+      }));
+      
+      // Adiciona resposta customizada se houver
+      const existingAnswer = answers.find(a => a.questionId === currentQuestion.id);
+      if (customAnswer.trim() && (!existingAnswer || !existingAnswer.answers.includes(customAnswer.trim()))) {
+        const existingIndex = formattedAnswers.findIndex(a => a.questionId === currentQuestion.id);
+        if (existingIndex >= 0) {
+          formattedAnswers[existingIndex].answer += ', ' + customAnswer.trim();
+        } else {
+          formattedAnswers.push({ questionId: currentQuestion.id, answer: customAnswer.trim() });
+        }
+      }
+      
+      saveContextMutation.mutate({ agentId, answers: formattedAnswers });
     }
   };
 
@@ -152,8 +196,20 @@ export function TeachAgentModal({ isOpen, onClose, agentId, agentName }: TeachAg
     }
   };
 
-  const getCurrentAnswer = () => {
-    return answers.find(a => a.questionId === currentQuestion?.id)?.answer || '';
+  // Retorna array de respostas selecionadas para a pergunta atual
+  const getCurrentAnswers = (): string[] => {
+    return answers.find(a => a.questionId === currentQuestion?.id)?.answers || [];
+  };
+
+  // Verifica se uma opção está selecionada
+  const isOptionSelected = (option: string): boolean => {
+    return getCurrentAnswers().includes(option);
+  };
+
+  // Verifica se tem pelo menos uma resposta para a pergunta atual
+  const hasCurrentAnswer = (): boolean => {
+    const currentAnswers = getCurrentAnswers();
+    return currentAnswers.length > 0 || customAnswer.trim().length > 0;
   };
 
   if (!isOpen) return null;
@@ -342,10 +398,10 @@ export function TeachAgentModal({ isOpen, onClose, agentId, agentName }: TeachAg
                 </h3>
               </div>
 
-              {/* Options */}
+              {/* Options - Múltipla seleção */}
               <div className="space-y-3">
                 {currentQuestion.options.map((option, index) => {
-                  const isSelected = getCurrentAnswer() === option;
+                  const isSelected = isOptionSelected(option);
                   return (
                     <button
                       key={index}
@@ -358,8 +414,9 @@ export function TeachAgentModal({ isOpen, onClose, agentId, agentName }: TeachAg
                       )}
                     >
                       <div className="flex items-center gap-3">
+                        {/* Checkbox style em vez de radio */}
                         <div className={cn(
-                          "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                          "w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all",
                           isSelected ? "border-violet-500 bg-violet-500" : "border-muted-foreground/30"
                         )}>
                           {isSelected && <Check className="h-3 w-3 text-white" />}
@@ -375,30 +432,43 @@ export function TeachAgentModal({ isOpen, onClose, agentId, agentName }: TeachAg
                   );
                 })}
 
-                {/* Custom answer */}
+                {/* Custom answer - pode ser adicional às opções */}
                 <div className="pt-2">
                   <p className="text-sm text-muted-foreground mb-2">
-                    Ou digite sua própria resposta:
+                    Ou adicione sua própria resposta:
                   </p>
                   <input
                     type="text"
                     value={customAnswer}
-                    onChange={(e) => {
-                      setCustomAnswer(e.target.value);
-                      // Remove seleção de opção quando começa a digitar
-                      if (e.target.value.trim()) {
-                        setAnswers(prev => prev.filter(a => a.questionId !== currentQuestion.id));
-                      }
-                    }}
+                    onChange={(e) => setCustomAnswer(e.target.value)}
                     placeholder="Digite aqui..."
                     className={cn(
                       "w-full p-4 rounded-xl border-2 bg-background transition-all",
-                      customAnswer.trim() && !getCurrentAnswer()
+                      customAnswer.trim()
                         ? "border-violet-500 bg-violet-500/5"
                         : "border-secondary focus:border-violet-500/50"
                     )}
                   />
                 </div>
+
+                {/* Mostrar respostas selecionadas */}
+                {getCurrentAnswers().length > 0 && (
+                  <div className="pt-2">
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Selecionadas ({getCurrentAnswers().length}):
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {getCurrentAnswers().map((answer, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 px-3 py-1 bg-violet-500/10 text-violet-600 dark:text-violet-400 rounded-full text-sm"
+                        >
+                          {answer}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Navigation */}
@@ -413,7 +483,7 @@ export function TeachAgentModal({ isOpen, onClose, agentId, agentName }: TeachAg
                 </button>
                 <button
                   onClick={handleNext}
-                  disabled={!getCurrentAnswer() && !customAnswer.trim()}
+                  disabled={!hasCurrentAnswer()}
                   className="flex items-center gap-2 px-6 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
                 >
                   {currentQuestionIndex === questions.length - 1 ? 'Finalizar' : 'Próxima'}
