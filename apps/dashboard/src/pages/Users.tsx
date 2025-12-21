@@ -21,7 +21,11 @@ import {
   Brain,
   Unlock,
   Timer,
-  Infinity
+  Infinity,
+  Square,
+  Play,
+  GraduationCap,
+  Loader2
 } from 'lucide-react';
 import { cn, apiRequest } from '@/lib/utils';
 
@@ -48,6 +52,34 @@ interface UserData {
   trialDaysRemaining: number | null;
   isTrialExpired: boolean;
   stats: UserStats;
+}
+
+interface UserAgentDetails {
+  userId: string;
+  trainedAgents: Array<{
+    agentType: string;
+    agentName: string;
+    hasTrained: boolean;
+    contextPreview: string | null;
+  }>;
+  activityLast24h: Array<{
+    agentId: string;
+    agentName: string;
+    count: number;
+    lastRun: string;
+    successful: number;
+    failed: number;
+  }>;
+  recentRuns: Array<{
+    id: number;
+    agentId: string;
+    agentName: string;
+    success: boolean;
+    eventType: string;
+    errorMessage: string | null;
+    createdAt: string;
+  }>;
+  agentsActive: boolean;
 }
 
 interface AdminStats {
@@ -108,6 +140,37 @@ export function Users() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
     },
+  });
+
+  // Mutação para parar agentes
+  const stopAgentsMutation = useMutation({
+    mutationFn: (userId: string) =>
+      apiRequest(`/admin/users/${userId}/stop-agents`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      queryClient.invalidateQueries({ queryKey: ['user-agents'] });
+    },
+  });
+
+  // Mutação para iniciar agentes
+  const startAgentsMutation = useMutation({
+    mutationFn: (userId: string) =>
+      apiRequest(`/admin/users/${userId}/start-agents`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      queryClient.invalidateQueries({ queryKey: ['user-agents'] });
+    },
+  });
+
+  // Query para detalhes dos agentes do usuário expandido
+  const { data: userAgentDetails, isLoading: loadingAgentDetails } = useQuery({
+    queryKey: ['user-agents', expandedUser],
+    queryFn: () => apiRequest<UserAgentDetails>(`/admin/users/${expandedUser}/agents`),
+    enabled: !!expandedUser,
   });
 
   const users = usersData?.users || [];
@@ -456,9 +519,110 @@ export function Users() {
                     </div>
                   </div>
 
+                  {/* Agentes Treinados e Atividade 24h */}
+                  <div className="mt-6 pt-4 border-t">
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {/* Agentes Treinados */}
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                          <GraduationCap className="w-4 h-4" />
+                          Agentes Treinados
+                        </h4>
+                        {loadingAgentDetails ? (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Carregando...
+                          </div>
+                        ) : userAgentDetails?.trainedAgents && userAgentDetails.trainedAgents.length > 0 ? (
+                          <div className="space-y-2">
+                            {userAgentDetails.trainedAgents.map((agent) => (
+                              <div key={agent.agentType} className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-800">
+                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                <span className="font-medium text-green-700 dark:text-green-300">
+                                  {agent.agentName}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhum agente treinado
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Atividade últimas 24h */}
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                          <Activity className="w-4 h-4" />
+                          Atividade (24h)
+                        </h4>
+                        {loadingAgentDetails ? (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Carregando...
+                          </div>
+                        ) : userAgentDetails?.activityLast24h && userAgentDetails.activityLast24h.length > 0 ? (
+                          <div className="space-y-2">
+                            {userAgentDetails.activityLast24h.map((activity) => (
+                              <div key={activity.agentId} className="flex items-center justify-between p-2 bg-card rounded-lg border">
+                                <div className="flex items-center gap-2">
+                                  <Bot className="w-4 h-4 text-primary" />
+                                  <span className="font-medium text-sm">{activity.agentName}</span>
+                                </div>
+                                <div className="flex items-center gap-3 text-xs">
+                                  <span className="text-green-600">{activity.successful}✓</span>
+                                  {activity.failed > 0 && (
+                                    <span className="text-red-600">{activity.failed}✗</span>
+                                  )}
+                                  <span className="text-muted-foreground">
+                                    {activity.count} exec.
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhuma atividade nas últimas 24h
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Actions */}
                   {user.role !== 'admin' && (
                     <div className="mt-6 pt-4 border-t flex flex-wrap gap-2">
+                      {/* Botão de Parar/Iniciar Agentes */}
+                      {user.stats.agentsActive ? (
+                        <button
+                          onClick={() => stopAgentsMutation.mutate(user.id)}
+                          disabled={stopAgentsMutation.isPending}
+                          className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50"
+                        >
+                          {stopAgentsMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                          Parar Agentes
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => startAgentsMutation.mutate(user.id)}
+                          disabled={startAgentsMutation.isPending || user.accountStatus !== 'active'}
+                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                        >
+                          {startAgentsMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Play className="w-4 h-4" />
+                          )}
+                          Iniciar Agentes
+                        </button>
+                      )}
+
                       {/* Botão de Liberar Permanentemente */}
                       {user.trialEndsAt !== null && (
                         <button

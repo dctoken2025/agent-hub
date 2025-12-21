@@ -373,5 +373,162 @@ export const adminRoutes = async (app) => {
             return reply.status(500).send({ error: 'Erro ao buscar estatísticas' });
         }
     });
+    // ===========================================
+    // Detalhes dos agentes de um usuário
+    // Inclui: agentes treinados, atividade recente
+    // ===========================================
+    app.get('/users/:id/agents', async (request, reply) => {
+        const db = getDb();
+        if (!db) {
+            return reply.status(500).send({ error: 'Banco de dados não disponível' });
+        }
+        const { id } = request.params;
+        try {
+            // Verifica se o usuário existe
+            const [user] = await db.select().from(users).where(eq(users.id, id));
+            if (!user) {
+                return reply.status(404).send({ error: 'Usuário não encontrado' });
+            }
+            // Busca config do usuário para ver agentes treinados
+            const [userConfig] = await db
+                .select()
+                .from(userConfigs)
+                .where(eq(userConfigs.userId, id));
+            // Verifica quais agentes foram treinados (tem contexto personalizado)
+            const agentContexts = userConfig?.agentContexts || {};
+            const trainedAgents = Object.entries(agentContexts)
+                .filter(([_, context]) => context !== null && context !== '')
+                .map(([agentType, context]) => ({
+                agentType,
+                agentName: getAgentDisplayName(agentType),
+                hasTrained: true,
+                contextPreview: typeof context === 'string' ? context.substring(0, 200) + '...' : null,
+            }));
+            // Busca atividade dos agentes nas últimas 24 horas
+            const twentyFourHoursAgo = new Date();
+            twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+            const recentActivity = await db
+                .select({
+                agentId: agentLogs.agentId,
+                agentName: agentLogs.agentName,
+                count: sql `count(*)::int`,
+                lastRun: sql `max(${agentLogs.createdAt})`,
+                successful: sql `count(*) FILTER (WHERE success = true)::int`,
+                failed: sql `count(*) FILTER (WHERE success = false)::int`,
+            })
+                .from(agentLogs)
+                .where(and(eq(agentLogs.userId, id), gte(agentLogs.createdAt, twentyFourHoursAgo)))
+                .groupBy(agentLogs.agentId, agentLogs.agentName);
+            // Últimas execuções detalhadas (até 20)
+            const recentRuns = await db
+                .select({
+                id: agentLogs.id,
+                agentId: agentLogs.agentId,
+                agentName: agentLogs.agentName,
+                success: agentLogs.success,
+                eventType: agentLogs.eventType,
+                errorMessage: agentLogs.errorMessage,
+                createdAt: agentLogs.createdAt,
+            })
+                .from(agentLogs)
+                .where(and(eq(agentLogs.userId, id), gte(agentLogs.createdAt, twentyFourHoursAgo)))
+                .orderBy(desc(agentLogs.createdAt))
+                .limit(20);
+            return {
+                userId: id,
+                trainedAgents,
+                activityLast24h: recentActivity,
+                recentRuns,
+                agentsActive: userConfig?.agentsActive || false,
+            };
+        }
+        catch (error) {
+            console.error('[Admin] Erro ao buscar agentes do usuário:', error);
+            return reply.status(500).send({ error: 'Erro ao buscar agentes' });
+        }
+    });
+    // ===========================================
+    // Parar todos os agentes de um usuário
+    // ===========================================
+    app.post('/users/:id/stop-agents', async (request, reply) => {
+        const db = getDb();
+        if (!db) {
+            return reply.status(500).send({ error: 'Banco de dados não disponível' });
+        }
+        const { id } = request.params;
+        try {
+            // Verifica se o usuário existe
+            const [user] = await db.select().from(users).where(eq(users.id, id));
+            if (!user) {
+                return reply.status(404).send({ error: 'Usuário não encontrado' });
+            }
+            // Para todos os agentes do usuário
+            const { getAgentManager } = await import('../services/agent-manager.js');
+            const agentManager = getAgentManager();
+            await agentManager.stopForUser(id);
+            await agentManager.setAgentsActiveState(id, false);
+            console.log(`[Admin] Agentes do usuário ${user.email} foram parados`);
+            return {
+                success: true,
+                message: 'Todos os agentes do usuário foram parados',
+                userId: id,
+                userEmail: user.email,
+            };
+        }
+        catch (error) {
+            console.error('[Admin] Erro ao parar agentes:', error);
+            return reply.status(500).send({ error: 'Erro ao parar agentes' });
+        }
+    });
+    // ===========================================
+    // Reiniciar agentes de um usuário
+    // ===========================================
+    app.post('/users/:id/start-agents', async (request, reply) => {
+        const db = getDb();
+        if (!db) {
+            return reply.status(500).send({ error: 'Banco de dados não disponível' });
+        }
+        const { id } = request.params;
+        try {
+            // Verifica se o usuário existe e está ativo
+            const [user] = await db.select().from(users).where(eq(users.id, id));
+            if (!user) {
+                return reply.status(404).send({ error: 'Usuário não encontrado' });
+            }
+            if (user.accountStatus !== 'active') {
+                return reply.status(400).send({
+                    error: 'Não é possível iniciar agentes de usuário com conta não ativa'
+                });
+            }
+            // Inicia os agentes do usuário
+            const { getAgentManager } = await import('../services/agent-manager.js');
+            const agentManager = getAgentManager();
+            await agentManager.setAgentsActiveState(id, true);
+            await agentManager.initializeForUser(id);
+            console.log(`[Admin] Agentes do usuário ${user.email} foram iniciados`);
+            return {
+                success: true,
+                message: 'Agentes do usuário foram iniciados',
+                userId: id,
+                userEmail: user.email,
+            };
+        }
+        catch (error) {
+            console.error('[Admin] Erro ao iniciar agentes:', error);
+            return reply.status(500).send({ error: 'Erro ao iniciar agentes' });
+        }
+    });
 };
+// Helper para nome amigável do tipo de agente
+function getAgentDisplayName(agentType) {
+    const names = {
+        email: 'Email Agent',
+        legal: 'Legal Agent',
+        financial: 'Financial Agent',
+        stablecoin: 'Stablecoin Agent',
+        task: 'Task Agent',
+        focus: 'Focus Agent',
+    };
+    return names[agentType] || agentType;
+}
 //# sourceMappingURL=admin.js.map
